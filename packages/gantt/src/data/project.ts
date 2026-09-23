@@ -1,7 +1,7 @@
 import { createEmitter } from '../util/emitter';
 import { QuartzioError } from '../util/errors';
 import { Draft } from './draft';
-import { createProjectState } from './normalize';
+import { assertValidState, createProjectState } from './normalize';
 import { applyOperations } from './operations';
 import { toProjectData } from './serialize';
 import { createTransaction, type IdGenerator, type Transaction } from './transaction';
@@ -34,9 +34,15 @@ export interface Project {
    * If `fn` throws, nothing is changed. Returns `null` when nothing changed.
    */
   transact: (fn: (tx: Transaction) => void) => Patch | null;
-  /** Like `transact`, but only computes the result without committing it. */
-  plan: (fn: (tx: Transaction) => void) => PlannedChange | null;
-  /** Applies operations, e.g. a patch's `inverse` for undo or operations received from a server. */
+  /**
+   * Like `transact`, but only computes the result without committing it.
+   * `base` plans on top of another state than the current one (e.g. an earlier planned change).
+   */
+  plan: (fn: (tx: Transaction) => void, base?: ProjectState) => PlannedChange | null;
+  /**
+   * Applies operations, e.g. a patch's `inverse` for undo or operations received from a server.
+   * The result is validated (parents and dependency ends must exist, no cycles); on failure nothing changes.
+   */
   apply: (operations: readonly Operation[]) => Patch | null;
   toData: () => ProjectData;
 }
@@ -53,6 +59,12 @@ function createDefaultIdGenerator(): IdGenerator {
   };
 }
 
+function isThenable(value: unknown): boolean {
+  return (
+    typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
 export function createProject(input: ProjectInput = {}, options: ProjectOptions = {}): Project {
   const changes = createEmitter<ProjectChange>();
   const generateId = options.generateId ?? createDefaultIdGenerator();
@@ -64,24 +76,39 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
     changes.emit({ state, patch });
   };
 
-  const plan = (fn: (tx: Transaction) => void): PlannedChange | null => {
-    if (running) throw new QuartzioError('Transactions cannot be nested.');
+  const assertNotRunning = (): void => {
+    if (running) throw new QuartzioError('Cannot change the project while a transaction is running.');
+  };
+
+  // `fn` is typed as returning `unknown` here: callers pass `=> void`, but an async function still
+  // type-checks as that, so the return value is checked at runtime.
+  const plan = (fn: (tx: Transaction) => unknown, base: ProjectState = state): PlannedChange | null => {
+    assertNotRunning();
     running = true;
+    const recorder = createTransaction(new Draft(base), generateId);
     try {
-      const draft = new Draft(state);
-      const { transaction, operations, inverse } = createTransaction(draft, generateId);
-      fn(transaction);
-      if (operations.length === 0) return null;
-      return { state: draft.finish(), patch: { operations, inverse } };
+      const result = fn(recorder.transaction);
+      if (isThenable(result)) {
+        throw new QuartzioError(
+          'Transaction functions must be synchronous. Do the async work before transact().',
+        );
+      }
     } finally {
+      recorder.close();
       running = false;
     }
+    if (recorder.operations.length === 0) return null;
+    return {
+      state: recorder.draft.finish(),
+      patch: { operations: recorder.operations, inverse: recorder.inverse },
+    };
   };
 
   return {
     getState: () => state,
     subscribe: (listener) => changes.subscribe(listener),
     load(nextInput) {
+      assertNotRunning();
       commit(createProjectState(nextInput), null);
     },
     plan,
@@ -92,8 +119,10 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
       return planned.patch;
     },
     apply(operations) {
+      assertNotRunning();
       if (operations.length === 0) return null;
       const result = applyOperations(state, operations);
+      assertValidState(result.state);
       const patch: Patch = { operations: [...operations], inverse: result.inverse };
       commit(result.state, patch);
       return patch;

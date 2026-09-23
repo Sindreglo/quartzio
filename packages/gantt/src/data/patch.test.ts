@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createProject } from './project';
 import { applyPatch, toProjectData } from './serialize';
+import { getTreeIndex } from './tree';
 import type { Transaction } from './transaction';
 import type { Id, Patch, ProjectData } from './types';
 
@@ -86,5 +87,51 @@ describe('patches', () => {
       tx.tasks.add({ id: 2, endDate: new Date(Date.UTC(2026, 0, 9)) }, { parentId: 1 });
     });
     expect(JSON.parse(JSON.stringify(patch))).toEqual(patch);
+  });
+
+  it('place tasks exactly where add and move ask, checked against a simple model', () => {
+    const random = createRandom(7);
+    const project = createProject();
+    // Expected sibling lists per parent (null = root).
+    const model = new Map<Id | null, Id[]>([[null, []]]);
+    const siblings = (parentId: Id | null): Id[] => {
+      let list = model.get(parentId);
+      if (!list) model.set(parentId, (list = []));
+      return list;
+    };
+    const parentOf = (id: Id): Id | null =>
+      [...model.entries()].find(([, children]) => children.includes(id))?.[0] ?? null;
+    const isInSubtree = (id: Id, root: Id): boolean =>
+      id === root || siblings(root).some((child) => isInSubtree(id, child));
+    const insert = (list: Id[], id: Id, index: number) => {
+      list.splice(Math.max(0, Math.min(index, list.length)), 0, id);
+    };
+
+    for (let i = 0; i < 1500; i++) {
+      const all = [...model.values()].flat();
+      const index = Math.floor(random() * 5) - 1; // includes out-of-range indices
+      const parentId =
+        all.length > 0 && random() < 0.7 ? (all[Math.floor(random() * all.length)] ?? null) : null;
+
+      if (all.length < 3 || random() < 0.4) {
+        const id = `n${String(i)}`;
+        project.transact((tx) => {
+          tx.tasks.add({ id }, { parentId, index });
+        });
+        insert(siblings(parentId), id, index);
+      } else {
+        const id = all[Math.floor(random() * all.length)] as Id;
+        if (parentId !== null && isInSubtree(parentId, id)) continue;
+        project.transact((tx) => {
+          tx.tasks.move(id, { parentId, index });
+        });
+        const old = siblings(parentOf(id));
+        old.splice(old.indexOf(id), 1);
+        insert(siblings(parentId), id, index);
+      }
+
+      const tree = getTreeIndex(project.getState().tasks);
+      for (const [parent, children] of model) expect(tree.children(parent)).toEqual(children);
+    }
   });
 });

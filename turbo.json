@@ -5,10 +5,15 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "typecheck": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "test": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "dev": {

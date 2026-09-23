@@ -1,4 +1,4 @@
-import { createProjectState } from './normalize';
+import { assertValidState, createProjectState } from './normalize';
 import { applyOperations } from './operations';
 import type { Id, Patch, ProjectData, ProjectState, Table } from './types';
 
@@ -15,5 +15,7 @@ export function toProjectData(state: ProjectState): ProjectData {
  * Meant for controlled usage: `onChange={({ patch }) => setData((data) => applyPatch(data, patch))}`.
  */
 export function applyPatch(data: ProjectData, patch: Patch): ProjectData {
-  return toProjectData(applyOperations(createProjectState(data), patch.operations).state);
+  const { state } = applyOperations(createProjectState(data), patch.operations);
+  assertValidState(state);
+  return toProjectData(state);
 }

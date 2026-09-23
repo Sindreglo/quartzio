@@ -156,26 +156,7 @@ export function createProjectState(input: ProjectInput = {}): ProjectState {
   };
   for (const task of input.tasks ?? []) visit(task, undefined);
 
-  // Parents must exist and parent chains must not loop.
-  const verified = new Set<Id>();
-  for (const task of tasks.values()) {
-    const chain = new Set<Id>();
-    let current: Task = task;
-    while (current.parentId !== null && !verified.has(current.id)) {
-      chain.add(current.id);
-      const parent = tasks.get(current.parentId);
-      if (!parent) {
-        throw new QuartzioError(
-          `${label('Task', current.id)} has parentId "${String(current.parentId)}", which does not exist.`,
-        );
-      }
-      if (chain.has(parent.id)) {
-        throw new QuartzioError(`${label('Task', parent.id)} is part of a parent cycle.`);
-      }
-      current = parent;
-    }
-    for (const id of chain) verified.add(id);
-  }
+  assertTaskHierarchy(tasks);
 
   const dependencies = new Map<Id, Dependency>();
   const dependencyOrder: Id[] = [];
@@ -199,6 +180,45 @@ export function createProjectState(input: ProjectInput = {}): ProjectState {
     tasks: { byId: tasks, order: taskOrder },
     dependencies: { byId: dependencies, order: dependencyOrder },
   };
+}
+
+/** Throws unless every parent exists and no parent chain loops. O(n). */
+function assertTaskHierarchy(tasks: ReadonlyMap<Id, Task>): void {
+  const verified = new Set<Id>();
+  for (const task of tasks.values()) {
+    const chain = new Set<Id>();
+    let current: Task = task;
+    while (current.parentId !== null && !verified.has(current.id)) {
+      chain.add(current.id);
+      const parent = tasks.get(current.parentId);
+      if (!parent) {
+        throw new QuartzioError(
+          `${label('Task', current.id)} has parentId "${String(current.parentId)}", which does not exist.`,
+        );
+      }
+      if (chain.has(parent.id)) {
+        throw new QuartzioError(`${label('Task', parent.id)} is part of a parent cycle.`);
+      }
+      current = parent;
+    }
+    for (const id of chain) verified.add(id);
+  }
+}
+
+/**
+ * Checks the structural invariants of a state produced by applying operations from outside
+ * (undo stacks, servers). Transactions keep these invariants by construction. O(n).
+ */
+export function assertValidState(state: ProjectState): void {
+  assertTaskHierarchy(state.tasks.byId);
+  for (const dependency of state.dependencies.byId.values()) {
+    assertDependencyEnds(
+      state.tasks.byId,
+      dependency.from,
+      dependency.to,
+      label('Dependency', dependency.id),
+    );
+  }
 }
 
 export function assertDependencyEnds(tasks: Table<Task>['byId'], from: Id, to: Id, owner: string): void {

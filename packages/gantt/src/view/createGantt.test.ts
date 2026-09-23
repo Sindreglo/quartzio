@@ -108,6 +108,93 @@ describe('createGantt', () => {
       expect(gantt.getState().project.tasks.order).toEqual([1, 2]);
     });
 
+    it('replays the reported change when exactly that data comes back', () => {
+      const withDependency: ProjectInput = {
+        tasks: [{ id: 1 }, { id: 2 }],
+        dependencies: [{ id: 'd', from: 1, to: 2 }],
+      };
+      const gantt = createGantt({
+        data: withDependency,
+        onChange: ({ data: next }) => {
+          gantt.setOptions({ data: next });
+        },
+      });
+      const dependencies = gantt.getState().project.dependencies;
+
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { name: 'Renamed' });
+      });
+
+      // Only the replay path keeps untouched tables; a full reload would rebuild them.
+      expect(gantt.getState().project.dependencies).toBe(dependencies);
+    });
+
+    it('builds quick successive edits on top of each other before data comes back', () => {
+      let current: ProjectData = createProject(data).toData();
+      const reported: ProjectData[] = [];
+      const gantt = createGantt({
+        data: current,
+        onChange: ({ patch, data: next }) => {
+          reported.push(next);
+          current = applyPatch(current, patch);
+        },
+      });
+
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { name: 'A' });
+      });
+      gantt.transact((tx) => {
+        tx.tasks.add({ id: 2 });
+      });
+
+      expect(reported[1]?.tasks.map((task) => [task.id, task.name])).toEqual([
+        [1, 'A'],
+        [2, ''],
+      ]);
+      expect(current).toEqual(reported[1]);
+
+      gantt.setOptions({ data: reported[1] });
+      expect(gantt.getState().project.tasks.order).toEqual([1, 2]);
+      expect(gantt.getState().project.tasks.byId.get(1)?.name).toBe('A');
+    });
+
+    it('drops a rejected change: later edits build on the last data passed in', async () => {
+      const reported: ProjectData[] = [];
+      const gantt = createGantt({ data, onChange: ({ data: next }) => reported.push(next) });
+
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { name: 'Rejected' });
+      });
+      await Promise.resolve(); // a later event
+
+      gantt.transact((tx) => {
+        tx.tasks.add({ id: 2 });
+      });
+      expect(reported[1]?.tasks.map((task) => [task.id, task.name])).toEqual([
+        [1, 'One'],
+        [2, ''],
+      ]);
+    });
+
+    it('treats a present but undefined data key as controlled and empty (e.g. while loading)', () => {
+      const gantt = createGantt({ data: undefined });
+      expect(gantt.getState().project.tasks.order).toEqual([]);
+
+      gantt.setOptions({ data });
+      expect(gantt.getState().project.tasks.order).toEqual([1]);
+    });
+
+    it('keeps rejecting invalid data instead of silently ignoring it the second time', () => {
+      const gantt = createGantt({ data });
+      const invalid: ProjectInput = { tasks: [{ id: 1, parentId: 'missing' }] };
+      expect(() => {
+        gantt.setOptions({ data: invalid });
+      }).toThrow(/does not exist/);
+      expect(() => {
+        gantt.setOptions({ data: invalid });
+      }).toThrow(/does not exist/);
+    });
+
     it('loads new data passed from outside', () => {
       const gantt = createGantt({ data });
       gantt.setOptions({ data: { tasks: [{ id: 'x' }, { id: 'y' }] } });

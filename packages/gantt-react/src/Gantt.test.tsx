@@ -1,6 +1,7 @@
 import type { GanttController, ProjectData, ProjectInput } from '@quartzio/gantt';
 import { act, render, screen } from '@testing-library/react';
 import { createRef, useState } from 'react';
+import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { Gantt } from './Gantt';
 
@@ -36,7 +37,7 @@ describe('<Gantt />', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it('only shows edits once the parent passes new data when controlled', () => {
+  it('only shows edits once the parent passes new data when controlled', async () => {
     const ref = createRef<GanttController>();
     let accept = false;
 
@@ -55,9 +56,23 @@ describe('<Gantt />', () => {
     expect(screen.getByText('2 tasks')).toBeDefined();
 
     accept = true;
-    act(() => {
+    await act(async () => {
+      await Promise.resolve(); // a separate user event
       ref.current?.transact((tx) => tx.tasks.add({ id: 3 }));
     });
     expect(screen.getByText('3 tasks')).toBeDefined();
+  });
+
+  it('shows data that arrives after mount (data={undefined} while loading)', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<Gantt data={undefined} onChange={onChange} />);
+    expect(screen.getByText('No tasks')).toBeDefined();
+
+    rerender(<Gantt data={data} onChange={onChange} />);
+    expect(screen.getByText('2 tasks')).toBeDefined();
+  });
+
+  it('renders on the server', () => {
+    expect(renderToString(<Gantt defaultData={data} />)).toContain('2 tasks');
   });
 });

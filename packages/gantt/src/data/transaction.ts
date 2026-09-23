@@ -3,6 +3,7 @@ import type { Draft } from './draft';
 import {
   assertDependencyEnds,
   assertNoParentCycle,
+  isId,
   normalizeDependencyChanges,
   normalizeDependencyFields,
   normalizeTaskChanges,
@@ -69,8 +70,11 @@ export type IdGenerator = (store: StoreName, exists: (id: Id) => boolean) => Id;
 
 export interface TransactionRecorder {
   transaction: Transaction;
+  draft: Draft;
   operations: Operation[];
   inverse: Operation[];
+  /** Makes every further use of the transaction throw. Called when the transaction function returns. */
+  close: () => void;
 }
 
 const clampIndex = (index: number | undefined, length: number): number =>
@@ -80,14 +84,42 @@ const clampIndex = (index: number | undefined, length: number): number =>
 export function createTransaction(draft: Draft, generateId: IdGenerator): TransactionRecorder {
   const operations: Operation[] = [];
   const inverse: Operation[] = [];
+  let closed = false;
+
+  // The draft's tables become the committed state, so a transaction used after it finished
+  // (e.g. after an `await`) would silently mutate "immutable" state.
+  const assertOpen = (): void => {
+    if (closed) {
+      throw new QuartzioError(
+        'This transaction has already finished. Transactions must be synchronous; do not keep or await them.',
+      );
+    }
+  };
 
   const apply = (op: Operation): void => {
-    inverse.unshift(applyOperation(draft, op));
+    assertOpen();
+    inverse.push(applyOperation(draft, op));
     operations.push(op);
   };
 
-  const tasks = (): Table<Task> => draft.read('tasks');
-  const dependencies = (): Table<Dependency> => draft.read('dependencies');
+  const tasks = (): Table<Task> => {
+    assertOpen();
+    return draft.read('tasks');
+  };
+  const dependencies = (): Table<Dependency> => {
+    assertOpen();
+    return draft.read('dependencies');
+  };
+
+  const newId = (store: StoreName, requested: Id | undefined, exists: (id: Id) => boolean): Id => {
+    const id = requested ?? generateId(store, exists);
+    if (!isId(id)) {
+      throw new QuartzioError(
+        `${store === 'tasks' ? 'Task' : 'Dependency'} id must be a non-empty string or a finite number.`,
+      );
+    }
+    return id;
+  };
 
   let tree: { version: number; index: TreeIndex } | undefined;
   const treeIndex = (): TreeIndex => {
@@ -131,7 +163,10 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
 
     const last = siblings[siblings.length - 1];
     if (last !== undefined) {
-      return Math.max(...[last, ...tree.descendants(last)].map(position)) + 1;
+      // A loop, not Math.max(...spread): large subtrees would overflow the call stack.
+      let end = position(last);
+      for (const id of tree.descendants(last)) end = Math.max(end, position(id));
+      return end + 1;
     }
     if (parentId !== null) return position(parentId) + 1;
     return tasks().order.length - (movingPosition === -1 ? 0 : 1);
@@ -151,7 +186,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
 
     add(input, position = {}) {
       const { id: requestedId, ...fields } = input;
-      const id = requestedId ?? generateId('tasks', (candidate) => tasks().byId.has(candidate));
+      const id = newId('tasks', requestedId, (candidate) => tasks().byId.has(candidate));
       const parentId = position.parentId ?? null;
       requireParent(parentId);
       const record: Task = { id, parentId, ...normalizeTaskFields(fields, `Task "${String(id)}"`) };
@@ -196,7 +231,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
 
     add(input) {
       const { id: requestedId, from, to, ...fields } = input;
-      const id = requestedId ?? generateId('dependencies', (candidate) => dependencies().byId.has(candidate));
+      const id = newId('dependencies', requestedId, (candidate) => dependencies().byId.has(candidate));
       const owner = `Dependency "${String(id)}"`;
       assertDependencyEnds(tasks().byId, from, to, owner);
       const record: Dependency = { id, from, to, ...normalizeDependencyFields(fields, owner) };
@@ -221,7 +256,14 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
 
   return {
     transaction: { tasks: taskTransaction, dependencies: dependencyTransaction },
+    draft,
     operations,
-    inverse,
+    // Inverse operations must run in reverse order; pushed in order and reversed on read.
+    get inverse() {
+      return [...inverse].reverse();
+    },
+    close: () => {
+      closed = true;
+    },
   };
 }

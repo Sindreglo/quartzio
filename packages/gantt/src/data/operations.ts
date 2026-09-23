@@ -1,6 +1,9 @@
 import { QuartzioError } from '../util/errors';
 import { Draft, type DraftTable } from './draft';
+import { isId } from './normalize';
 import type { Id, Operation, ProjectState, StoreName } from './types';
+
+const STORES: readonly string[] = ['tasks', 'dependencies'] satisfies StoreName[];
 
 type AnyRecord = { readonly id: Id } & Record<string, unknown>;
 
@@ -12,12 +15,15 @@ const clamp = (value: number, max: number): number => Math.max(0, Math.min(value
  * semantic validation (parents exist, no cycles, ...) is the transaction's job.
  */
 export function applyOperation(draft: Draft, op: Operation): Operation {
+  // Operations may come from outside (JSON, servers), so don't trust their shape.
+  if (!STORES.includes(op.store)) throw new QuartzioError(`Unknown store "${op.store}" in operation.`);
   const table = draft.write(op.store) as unknown as DraftTable<AnyRecord>;
   const store: StoreName = op.store;
 
   switch (op.type) {
     case 'add': {
       const record = op.record as unknown as AnyRecord;
+      if (!isId(record.id)) throw new QuartzioError(`Cannot add ${store}: the record has no valid id.`);
       if (table.byId.has(record.id)) {
         throw new QuartzioError(`Cannot add ${store} "${String(record.id)}": the id already exists.`);
       }
@@ -36,6 +42,8 @@ export function applyOperation(draft: Draft, op: Operation): Operation {
     case 'update': {
       const record = table.byId.get(op.id);
       if (!record) throw unknownId(store, op.id, 'update');
+      if ('id' in op.changes)
+        throw new QuartzioError(`Cannot update ${store} "${String(op.id)}": ids are immutable.`);
       const previous: Record<string, unknown> = {};
       for (const key of Object.keys(op.changes)) previous[key] = record[key];
       table.byId.set(op.id, { ...record, ...op.changes });
@@ -47,6 +55,10 @@ export function applyOperation(draft: Draft, op: Operation): Operation {
       table.order.splice(from, 1);
       table.order.splice(clamp(op.index, table.order.length), 0, op.id);
       return { type: 'move', store, id: op.id, index: from };
+    }
+    default: {
+      const unknown: never = op;
+      throw new QuartzioError(`Unknown operation type "${String((unknown as { type: unknown }).type)}".`);
     }
   }
 }

@@ -3,7 +3,8 @@ import { QuartzioError } from '../util/errors';
 import { createProject } from './project';
 import { toProjectData } from './serialize';
 import { getTreeIndex } from './tree';
-import type { ProjectInput, ProjectState } from './types';
+import type { Transaction } from './transaction';
+import type { Operation, ProjectInput, ProjectState } from './types';
 
 const input: ProjectInput = {
   tasks: [
@@ -116,7 +117,104 @@ describe('createProject', () => {
 
     it('rejects nested transactions', () => {
       const project = createProject(input);
-      expect(() => project.transact(() => project.transact(() => undefined))).toThrow(/nested/);
+      expect(() => project.transact(() => project.transact(() => undefined))).toThrow(
+        /while a transaction is running/,
+      );
+    });
+  });
+
+  describe('transaction lifecycle', () => {
+    it('cannot be used after it has finished', () => {
+      const project = createProject(input);
+      let saved: Transaction | undefined;
+      project.transact((tx) => {
+        saved = tx;
+        tx.tasks.update('a', { name: 'Changed' });
+      });
+      const committed = project.getState();
+
+      expect(() => saved?.tasks.add({ id: 'late' })).toThrow(/already finished/);
+      expect(() => saved?.tasks.get('a')).toThrow(/already finished/);
+      expect(project.getState()).toBe(committed);
+      expect(committed.tasks.byId.has('late')).toBe(false);
+    });
+
+    it('rejects async transaction functions without committing anything', () => {
+      const project = createProject(input);
+      const before = project.getState();
+
+      expect(() =>
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises -- exactly what we guard against
+        project.transact(async (tx) => {
+          tx.tasks.update('a', { name: 'Async' });
+          await Promise.resolve();
+        }),
+      ).toThrow(/synchronous/);
+      expect(project.getState()).toBe(before);
+    });
+
+    it('rejects load() and apply() while a transaction runs', () => {
+      const project = createProject(input);
+      expect(() =>
+        project.transact(() => {
+          project.load({});
+        }),
+      ).toThrow(/while a transaction is running/);
+      expect(() =>
+        project.transact(() => {
+          project.apply([]);
+        }),
+      ).toThrow(/while a transaction is running/);
+    });
+
+    it('validates requested and generated ids', () => {
+      expect(() =>
+        createProject().transact((tx) => {
+          tx.tasks.add({ id: '' });
+        }),
+      ).toThrow(/id must be/);
+      expect(() =>
+        createProject().transact((tx) => {
+          tx.tasks.add({ id: Number.NaN });
+        }),
+      ).toThrow(/id must be/);
+      const badGenerator = createProject({}, { generateId: () => '' });
+      expect(() =>
+        badGenerator.transact((tx) => {
+          tx.tasks.add({});
+        }),
+      ).toThrow(/id must be/);
+    });
+  });
+
+  describe('apply', () => {
+    it('rejects operations that would corrupt the tables, without changing anything', () => {
+      const project = createProject(input);
+      const before = project.getState();
+      const bad: unknown[] = [
+        { type: 'update', store: 'tasks', id: 'a', changes: { id: 'zzz' } },
+        { type: 'explode', store: 'tasks', id: 'a' },
+        { type: 'remove', store: 'nope', id: 'a' },
+        { type: 'add', store: 'tasks', record: { name: 'no id' }, index: 0 },
+        // Removing only the parent would leave its children pointing at nothing.
+        { type: 'remove', store: 'tasks', id: 'a' },
+        { type: 'add', store: 'dependencies', record: { id: 'd9', from: 'a', to: 'ghost' }, index: 0 },
+      ];
+      for (const operation of bad) {
+        expect(() => project.apply([operation as Operation])).toThrow(QuartzioError);
+      }
+      expect(project.getState()).toBe(before);
+    });
+
+    it('inverts dependency updates and removals', () => {
+      const project = createProject(input);
+      const before = project.toData();
+      const patch = project.transact((tx) => {
+        tx.dependencies.update('d1', { type: 'SS', lag: 3 });
+        tx.dependencies.remove('d1');
+      });
+      project.apply(patch?.inverse ?? []);
+      expect(project.toData()).toEqual(before);
     });
   });
 

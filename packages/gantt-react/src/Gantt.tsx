@@ -5,11 +5,16 @@ import {
   type Ref,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
 
+/**
+ * Passing the `data` prop — even as `undefined`, e.g. while loading — makes the chart controlled.
+ * Omit it and use `defaultData` for uncontrolled usage. The mode is fixed on mount.
+ */
 export interface GanttProps extends GanttOptions {
   className?: string | undefined;
   style?: CSSProperties | undefined;
@@ -17,18 +22,27 @@ export interface GanttProps extends GanttOptions {
   ref?: Ref<GanttController> | undefined;
 }
 
-export function Gantt({ className, style, ref, data, defaultData, onChange }: GanttProps): ReactElement {
+export function Gantt(props: GanttProps): ReactElement {
+  const { className, style, ref, data, defaultData, onChange } = props;
+  // Key presence, not the value, decides the mode (see GanttProps).
+  const controlled = 'data' in props;
+
   // The controller holds no timers or external resources yet, so it is not destroyed on unmount:
   // StrictMode's mount → unmount → mount would otherwise leave us with a destroyed controller.
-  const [gantt] = useState<GanttController>(() => createGantt({ data, defaultData, onChange }));
-  const state = useSyncExternalStore(gantt.subscribe, gantt.getState);
+  const [gantt] = useState<GanttController>(() =>
+    createGantt(controlled ? { data, onChange } : { defaultData, onChange }),
+  );
+  // The third argument makes server rendering work; the server snapshot is the initial state.
+  const state = useSyncExternalStore(gantt.subscribe, gantt.getState, gantt.getState);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => gantt, [gantt]);
 
-  useEffect(() => {
-    gantt.setOptions({ data, onChange });
-  }, [gantt, data, onChange]);
+  // A layout effect so new data is shown in the same commit (no frame with stale content), and so
+  // event handlers never see a stale onChange.
+  useLayoutEffect(() => {
+    gantt.setOptions(controlled ? { data, onChange } : { onChange });
+  }, [gantt, controlled, data, onChange]);
 
   useEffect(() => {
     const root = rootRef.current;
