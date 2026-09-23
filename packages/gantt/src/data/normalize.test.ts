@@ -80,7 +80,7 @@ describe('createProjectState', () => {
       { tasks: [{ id: 1, children: [{ id: 2, parentId: 3 }] }] },
       /nested/,
     ],
-    ['an invalid date', { tasks: [{ id: 1, startDate: new Date('nope') }] }, /startDate/],
+    ['an invalid date', { tasks: [{ id: 1, startDate: new Date(Number.NaN) }] }, /startDate/],
     ['a negative duration', { tasks: [{ id: 1, duration: -1 }] }, /duration/],
     ['percentDone above 100', { tasks: [{ id: 1, percentDone: 120 }] }, /percentDone/],
     ['an empty id', { tasks: [{ id: '' }] }, /id must be/],
@@ -93,5 +93,113 @@ describe('createProjectState', () => {
   ])('rejects %s', (_, input, message) => {
     expect(() => createProjectState(input)).toThrow(QuartzioError);
     expect(() => createProjectState(input)).toThrow(message);
+  });
+
+  describe('settings', () => {
+    it('fills in defaults', () => {
+      expect(createProjectState().settings).toEqual({
+        timeZone: 'local',
+        calendarId: null,
+        hoursPerDay: 8,
+        daysPerWeek: 5,
+        daysPerMonth: 20,
+        weekStartsOn: 1,
+      });
+    });
+
+    it.each([
+      [{ timeZone: 'Mars/Olympus' }, /time zone/],
+      [{ hoursPerDay: 0 }, /hoursPerDay/],
+      [{ daysPerWeek: 8 }, /daysPerWeek/],
+      [{ weekStartsOn: 7 }, /weekStartsOn/],
+      [{ calendarId: 'missing' }, /does not exist/],
+    ])('rejects %j', (settings, message) => {
+      expect(() => createProjectState({ settings })).toThrow(message);
+    });
+  });
+
+  describe('date strings', () => {
+    it('reads them as wall-clock time in the project time zone', () => {
+      const state = createProjectState({
+        settings: { timeZone: 'Europe/Oslo' },
+        tasks: [{ id: 1, startDate: '2026-10-05', endDate: '2026-10-05T16:00' }],
+      });
+      expect(state.tasks.byId.get(1)).toMatchObject({
+        startDate: Date.UTC(2026, 9, 4, 22),
+        endDate: Date.UTC(2026, 9, 5, 14),
+      });
+    });
+
+    it('rejects strings that are not ISO dates', () => {
+      expect(() => createProjectState({ tasks: [{ id: 1, startDate: '05.10.2026' }] })).toThrow(/ISO 8601/);
+    });
+  });
+
+  describe('calendars', () => {
+    it('normalizes a partial week and exceptions', () => {
+      const state = createProjectState({
+        calendars: [
+          {
+            id: 'c',
+            week: {
+              monday: [
+                { start: '12:00', end: '16:00' },
+                { start: '08:00', end: '11:00' },
+              ],
+            },
+            exceptions: [{ startDate: '2026-12-24', endDate: '2026-12-26', name: 'Christmas' }],
+          },
+        ],
+      });
+      const calendar = state.calendars.byId.get('c');
+      expect(calendar?.week.monday).toEqual([
+        { start: '08:00', end: '11:00' },
+        { start: '12:00', end: '16:00' },
+      ]);
+      expect(calendar?.week.tuesday).toEqual([]);
+      expect(calendar?.exceptions).toEqual([
+        { startDate: '2026-12-24', endDate: '2026-12-26', name: 'Christmas', intervals: [] },
+      ]);
+    });
+
+    it('uses office hours when the week is left out', () => {
+      const state = createProjectState({ calendars: [{ id: 'c' }] });
+      expect(state.calendars.byId.get('c')?.week.friday).toEqual([{ start: '08:00', end: '16:00' }]);
+    });
+
+    it.each([
+      [{ week: { monday: [{ start: '16:00', end: '08:00' }] } }, /start" before "end/],
+      [{ week: { monday: [{ start: '8:00', end: '16:00' }] } }, /HH:mm/],
+      [
+        {
+          week: {
+            monday: [
+              { start: '08:00', end: '12:00' },
+              { start: '11:00', end: '16:00' },
+            ],
+          },
+        },
+        /overlap/,
+      ],
+      [{ week: { funday: [] } }, /not a weekday/],
+      [{ exceptions: [{ startDate: '2026-12-26', endDate: '2026-12-24' }] }, /before/],
+      [{ exceptions: [{ startDate: '24.12.2026' }] }, /YYYY-MM-DD/],
+    ])('rejects invalid calendar %#', (calendar, message) => {
+      expect(() => createProjectState({ calendars: [{ id: 'c', ...calendar } as never] })).toThrow(message);
+    });
+  });
+
+  it('rejects tasks that end before they start', () => {
+    expect(() =>
+      createProjectState({
+        tasks: [{ id: 1, startDate: Date.UTC(2026, 0, 5), endDate: Date.UTC(2026, 0, 4) }],
+      }),
+    ).toThrow(/before "startDate"/);
+  });
+
+  it('rejects non-string names', () => {
+    expect(() => createProjectState({ tasks: [{ id: 1, name: 42 as never }] })).toThrow(
+      /"name" must be a string/,
+    );
   });
 });

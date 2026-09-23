@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { BasicDemo } from './basic';
+import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
 
 export interface Demo {
@@ -24,5 +25,12 @@ export const demos: Demo[] = [
     description:
       'Controlled data: edits are transactions that produce patches. Undo/redo applies inverse patches with applyPatch.',
     Component: DataModelDemo,
+  },
+  {
+    id: 'calendar',
+    title: 'Time & calendars',
+    description:
+      'Durations are working time: start + duration skips nights, weekends and holidays, in the chosen time zone. Try a start before a DST change or a holiday.',
+    Component: CalendarDemo,
   },
 ];

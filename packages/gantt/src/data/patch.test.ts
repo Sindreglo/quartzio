@@ -41,9 +41,16 @@ function randomEdit(tx: Transaction, random: () => number): void {
     } catch {
       // Moving into the own subtree is rejected; that's fine for this test.
     }
-  } else if (roll < 0.9) {
+  } else if (roll < 0.85) {
     const other = pick();
     if (other !== undefined && other !== target) tx.dependencies.add({ from: target, to: other });
+  } else if (roll < 0.9) {
+    const calendar = tx.calendars.add({ week: { monday: [{ start: '09:00', end: '15:00' }] } });
+    tx.settings.update({
+      calendarId: random() < 0.5 ? calendar.id : null,
+      timeZone: random() < 0.5 ? 'Europe/Oslo' : 'local',
+      hoursPerDay: random() < 0.5 ? 6 : 8,
+    });
   } else {
     tx.tasks.remove(target);
   }
@@ -75,10 +82,11 @@ describe('patches', () => {
 
     // Undo everything, newest first, and end up where we started.
     for (const { patch } of [...history].reverse()) project.apply(patch.inverse);
-    expect(toProjectData(project.getState())).toEqual({
-      tasks: [expect.objectContaining({ id: 'root' })],
-      dependencies: [],
-    });
+    const final = toProjectData(project.getState());
+    expect(final.tasks.map((task) => task.id)).toEqual(['root']);
+    expect(final.dependencies).toEqual([]);
+    expect(final.calendars).toEqual([]);
+    expect(final.settings.timeZone).toBe('local');
   });
 
   it('are JSON-serializable', () => {

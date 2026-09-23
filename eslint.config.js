@@ -12,15 +12,34 @@ const TESTS = ['**/*.test.{ts,tsx}'];
 // Engine layers, lowest first. A layer may only import from itself or layers below it (ADR 0002).
 const LAYERS = ['util', 'data', 'calendar', 'scheduling', 'timeaxis', 'view', 'features'];
 
+const TIME_ZONE_MESSAGE =
+  'This depends on the host time zone. Use the time-zone aware helpers in util/ instead.';
+const TIME_ZONE_SENSITIVE = [
+  // Wall-clock getters/setters and formatting.
+  'CallExpression > MemberExpression.callee > Identifier.property[name=/^((get|set)(UTC)?(FullYear|Month|Date|Day|Hours|Minutes|Seconds|Milliseconds)|getTimezoneOffset|toLocale(Date|Time)?String|toDateString|toTimeString)$/]',
+  // new Date(2026, 0, 5) is local wall time; new Date('2026-01-05T08:00') is parsed as local time.
+  "NewExpression[callee.name='Date'][arguments.length>1]",
+  "NewExpression[callee.name='Date'][arguments.0.type='Literal'][arguments.0.raw=/^['\"]/]",
+  "NewExpression[callee.name='Date'][arguments.0.type='TemplateLiteral']",
+  "CallExpression[callee.object.name='Date'][callee.property.name='parse']",
+].map((selector) => ({ selector, message: TIME_ZONE_MESSAGE }));
+
 const NO_RUNTIME_DEPS = {
   regex: '^[^.]',
   message: 'The engine has no runtime dependencies. Adding one requires an ADR.',
 };
 const NO_RUNTIME_DEPS_IN_TESTS = { ...NO_RUNTIME_DEPS, regex: '^(?!\\.|vitest$)' };
 
+// `..` and `../index` from inside a layer resolve to the package root, which re-exports every layer.
+const NO_ROOT_IMPORT = {
+  regex: '^\\.\\.(/index(\\.[jt]s)?)?$',
+  message:
+    'Layer files must not import the package root (it re-exports every layer). Import the module directly.',
+};
+
 const layerRules = (layer, index, isTest) => {
   const higher = LAYERS.slice(index + 1);
-  const patterns = [isTest ? NO_RUNTIME_DEPS_IN_TESTS : NO_RUNTIME_DEPS];
+  const patterns = [isTest ? NO_RUNTIME_DEPS_IN_TESTS : NO_RUNTIME_DEPS, NO_ROOT_IMPORT];
   if (higher.length > 0) {
     patterns.push({
       regex: `(^|/)(${higher.join('|')})(/|$)`,
@@ -94,14 +113,7 @@ export default defineConfig(
     files: [`${ENGINE}/**/*.{ts,tsx}`],
     ignores: [`${ENGINE}/util/**`],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector:
-            'CallExpression > MemberExpression.callee > Identifier.property[name=/^((get|set)(UTC)?(FullYear|Month|Date|Day|Hours|Minutes|Seconds|Milliseconds)|getTimezoneOffset)$/]',
-          message: 'This depends on the host time zone. Use the time-zone aware helpers in util/ instead.',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...TIME_ZONE_SENSITIVE],
     },
   },
 

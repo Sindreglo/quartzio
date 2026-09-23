@@ -1,19 +1,36 @@
+import { isEqual } from '../util/equal';
 import { QuartzioError } from '../util/errors';
 import type { Draft } from './draft';
 import {
   assertDependencyEnds,
   assertNoParentCycle,
+  assertNoStructureFields,
+  assertTaskDates,
   isId,
+  normalizeCalendarChanges,
+  normalizeCalendarFields,
   normalizeDependencyChanges,
   normalizeDependencyFields,
+  normalizeSettingsChanges,
   normalizeTaskChanges,
   normalizeTaskFields,
+  type CalendarFieldsInput,
   type DependencyFieldsInput,
   type TaskFieldsInput,
 } from './normalize';
 import { applyOperation } from './operations';
 import { buildTreeIndex, type TreeIndex } from './tree';
-import type { Dependency, Id, Operation, StoreName, Table, Task } from './types';
+import type {
+  Calendar,
+  Dependency,
+  Id,
+  Operation,
+  ProjectSettings,
+  ProjectSettingsInput,
+  StoreName,
+  Table,
+  Task,
+} from './types';
 
 /** Where to put a task. `parentId` defaults to root (for add) or the current parent (for move); `index` to last. */
 export interface TaskPosition {
@@ -61,7 +78,33 @@ export interface DependencyTransaction {
   remove: (id: Id) => void;
 }
 
+export interface CalendarAddInput extends CalendarFieldsInput {
+  /** Generated when omitted. */
+  id?: Id;
+}
+
+export type CalendarUpdateInput = CalendarFieldsInput;
+
+export interface CalendarTransaction {
+  get: (id: Id) => Calendar | undefined;
+  add: (input: CalendarAddInput) => Calendar;
+  update: (id: Id, changes: CalendarUpdateInput) => void;
+  /** Fails while the calendar is the project calendar. */
+  remove: (id: Id) => void;
+}
+
+export interface SettingsTransaction {
+  get: () => ProjectSettings;
+  /**
+   * Changing `timeZone` does not move existing dates (they are instants), but it changes how wall-clock
+   * logic and date strings in later input are interpreted.
+   */
+  update: (changes: ProjectSettingsInput) => void;
+}
+
 export interface Transaction {
+  readonly settings: SettingsTransaction;
+  readonly calendars: CalendarTransaction;
   readonly tasks: TaskTransaction;
   readonly dependencies: DependencyTransaction;
 }
@@ -73,6 +116,8 @@ export interface TransactionRecorder {
   draft: Draft;
   operations: Operation[];
   inverse: Operation[];
+  /** Checks invariants that may be broken temporarily inside a transaction (e.g. end before start). */
+  validate: () => void;
   /** Makes every further use of the transaction throw. Called when the transaction function returns. */
   close: () => void;
 }
@@ -84,6 +129,7 @@ const clampIndex = (index: number | undefined, length: number): number =>
 export function createTransaction(draft: Draft, generateId: IdGenerator): TransactionRecorder {
   const operations: Operation[] = [];
   const inverse: Operation[] = [];
+  const touchedTasks = new Set<Id>();
   let closed = false;
 
   // The draft's tables become the committed state, so a transaction used after it finished
@@ -109,6 +155,14 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
   const dependencies = (): Table<Dependency> => {
     assertOpen();
     return draft.read('dependencies');
+  };
+  const calendars = (): Table<Calendar> => {
+    assertOpen();
+    return draft.read('calendars');
+  };
+  const settings = (): ProjectSettings => {
+    assertOpen();
+    return draft.readSettings();
   };
 
   const newId = (store: StoreName, requested: Id | undefined, exists: (id: Id) => boolean): Id => {
@@ -175,7 +229,8 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
   const changedFields = <R extends object>(record: R, changes: Partial<R>): Partial<R> => {
     const result: Partial<R> = {};
     for (const key of Object.keys(changes) as (keyof R)[]) {
-      if (!Object.is(record[key], changes[key])) result[key] = changes[key];
+      // Structural, so re-sending equal arrays/objects (e.g. a calendar's week) is not a change.
+      if (!isEqual(record[key], changes[key])) result[key] = changes[key];
     }
     return result;
   };
@@ -187,17 +242,23 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
     add(input, position = {}) {
       const { id: requestedId, ...fields } = input;
       const id = newId('tasks', requestedId, (candidate) => tasks().byId.has(candidate));
+      const owner = `Task "${String(id)}"`;
+      assertNoStructureFields(fields, owner);
       const parentId = position.parentId ?? null;
       requireParent(parentId);
-      const record: Task = { id, parentId, ...normalizeTaskFields(fields, `Task "${String(id)}"`) };
+      const record: Task = { id, parentId, ...normalizeTaskFields(fields, owner, settings().timeZone) };
       apply({ type: 'add', store: 'tasks', record, index: orderIndexFor(parentId, position.index) });
+      touchedTasks.add(id);
       return record;
     },
 
     update(id, input) {
       const task = requireTask(id);
-      const changes = changedFields(task, normalizeTaskChanges(input, `Task "${String(id)}"`));
+      const owner = `Task "${String(id)}"`;
+      assertNoStructureFields(input, owner);
+      const changes = changedFields(task, normalizeTaskChanges(input, owner, settings().timeZone));
       if (Object.keys(changes).length > 0) apply({ type: 'update', store: 'tasks', id, changes });
+      touchedTasks.add(id);
     },
 
     move(id, position) {
@@ -254,13 +315,64 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
     },
   };
 
+  const calendarTransaction: CalendarTransaction = {
+    get: (id) => calendars().byId.get(id),
+
+    add(input) {
+      const { id: requestedId, ...fields } = input;
+      const id = newId('calendars', requestedId, (candidate) => calendars().byId.has(candidate));
+      const record: Calendar = { id, ...normalizeCalendarFields(fields, `Calendar "${String(id)}"`) };
+      apply({ type: 'add', store: 'calendars', record, index: calendars().order.length });
+      return record;
+    },
+
+    update(id, input) {
+      const calendar = calendars().byId.get(id);
+      if (!calendar) throw new QuartzioError(`Calendar "${String(id)}" does not exist.`);
+      const changes = changedFields(calendar, normalizeCalendarChanges(input, `Calendar "${String(id)}"`));
+      if (Object.keys(changes).length > 0) apply({ type: 'update', store: 'calendars', id, changes });
+    },
+
+    remove(id) {
+      if (!calendars().byId.has(id)) throw new QuartzioError(`Calendar "${String(id)}" does not exist.`);
+      if (settings().calendarId === id) {
+        throw new QuartzioError(
+          `Calendar "${String(id)}" is the project calendar. Change settings.calendarId first.`,
+        );
+      }
+      apply({ type: 'remove', store: 'calendars', id });
+    },
+  };
+
+  const settingsTransaction: SettingsTransaction = {
+    get: settings,
+    update(input) {
+      const changes = changedFields(settings(), normalizeSettingsChanges(input));
+      if (changes.calendarId != null && !calendars().byId.has(changes.calendarId)) {
+        throw new QuartzioError(`Project settings: calendar "${String(changes.calendarId)}" does not exist.`);
+      }
+      if (Object.keys(changes).length > 0) apply({ type: 'settings', changes });
+    },
+  };
+
   return {
-    transaction: { tasks: taskTransaction, dependencies: dependencyTransaction },
+    transaction: {
+      settings: settingsTransaction,
+      calendars: calendarTransaction,
+      tasks: taskTransaction,
+      dependencies: dependencyTransaction,
+    },
     draft,
     operations,
     // Inverse operations must run in reverse order; pushed in order and reversed on read.
     get inverse() {
       return [...inverse].reverse();
+    },
+    validate: () => {
+      for (const id of touchedTasks) {
+        const task = draft.read('tasks').byId.get(id);
+        if (task) assertTaskDates(task);
+      }
     },
     close: () => {
       closed = true;

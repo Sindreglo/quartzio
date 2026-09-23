@@ -187,6 +187,76 @@ describe('createProject', () => {
     });
   });
 
+  describe('settings and calendars', () => {
+    it('updates settings and calendars in a transaction and can undo it', () => {
+      const project = createProject(input);
+      const before = project.toData();
+      const patch = project.transact((tx) => {
+        tx.calendars.add({ id: 'four-day', week: { monday: [{ start: '08:00', end: '18:00' }] } });
+        tx.settings.update({ calendarId: 'four-day', timeZone: 'Europe/Oslo', hoursPerDay: 10 });
+      });
+      expect(project.getState().settings).toMatchObject({ calendarId: 'four-day', hoursPerDay: 10 });
+
+      project.apply(patch?.inverse ?? []);
+      expect(project.toData()).toEqual(before);
+    });
+
+    it('parses date strings in the time zone set earlier in the same transaction', () => {
+      const project = createProject(input);
+      project.transact((tx) => {
+        tx.settings.update({ timeZone: 'America/New_York' });
+        tx.tasks.update('a', { startDate: '2026-10-05T08:00' });
+      });
+      expect(project.getState().tasks.byId.get('a')?.startDate).toBe(Date.UTC(2026, 9, 5, 12));
+    });
+
+    it('refuses to remove the project calendar or point at a missing one', () => {
+      const project = createProject({ calendars: [{ id: 'c' }], settings: { calendarId: 'c' } });
+      expect(() =>
+        project.transact((tx) => {
+          tx.calendars.remove('c');
+        }),
+      ).toThrow(/project calendar/);
+      expect(() =>
+        project.transact((tx) => {
+          tx.settings.update({ calendarId: 'x' });
+        }),
+      ).toThrow(/does not exist/);
+    });
+  });
+
+  describe('validation at the end of a transaction', () => {
+    it('allows end before start in between, as long as it is fixed before the transaction ends', () => {
+      const project = createProject({
+        tasks: [{ id: 1, startDate: Date.UTC(2026, 0, 5), endDate: Date.UTC(2026, 0, 6) }],
+      });
+      project.transact((tx) => {
+        tx.tasks.update(1, { startDate: Date.UTC(2026, 0, 10) });
+        tx.tasks.update(1, { endDate: Date.UTC(2026, 0, 11) });
+      });
+      expect(() =>
+        project.transact((tx) => {
+          tx.tasks.update(1, { endDate: Date.UTC(2026, 0, 1) });
+        }),
+      ).toThrow(/before "startDate"/);
+    });
+
+    it('rejects structure passed as fields', () => {
+      const project = createProject(input);
+      const withChildren = { name: 'x', children: [{ id: 'c' }] };
+      expect(() =>
+        project.transact((tx) => {
+          tx.tasks.add(withChildren);
+        }),
+      ).toThrow(/"children"/);
+      expect(() =>
+        project.transact((tx) => {
+          tx.tasks.update('a', { parentId: 'b' } as never);
+        }),
+      ).toThrow(/move/);
+    });
+  });
+
   describe('apply', () => {
     it('rejects operations that would corrupt the tables, without changing anything', () => {
       const project = createProject(input);
@@ -204,6 +274,51 @@ describe('createProject', () => {
         expect(() => project.apply([operation as Operation])).toThrow(QuartzioError);
       }
       expect(project.getState()).toBe(before);
+    });
+
+    it('validates records and settings that come in through operations', () => {
+      const project = createProject({ calendars: [{ id: 'c' }] });
+      const before = project.getState();
+      const bad: unknown[] = [
+        { type: 'add', store: 'calendars', record: { id: 'x', name: 'No week', exceptions: [] }, index: 0 },
+        {
+          type: 'update',
+          store: 'calendars',
+          id: 'c',
+          changes: {
+            week: { ...before.calendars.byId.get('c')?.week, monday: [{ start: '16:00', end: '08:00' }] },
+          },
+        },
+        { type: 'update', store: 'tasks', id: 'nope', changes: {} },
+        { type: 'settings', changes: { toString: 'x' } },
+        { type: 'settings', changes: { timeZone: undefined } },
+        { type: 'settings', changes: { hoursPerDay: -1 } },
+        { type: 'settings', changes: null },
+      ];
+      for (const operation of bad) {
+        expect(() => project.apply([operation as Operation])).toThrow(QuartzioError);
+      }
+      expect(project.getState()).toBe(before);
+
+      const withTask = createProject({ tasks: [{ id: 1 }] });
+      expect(() =>
+        withTask.apply([{ type: 'update', store: 'tasks', id: 1, changes: { percentDone: 500 } }]),
+      ).toThrow(/percentDone/);
+      expect(() =>
+        withTask.apply([
+          { type: 'update', store: 'tasks', id: 1, changes: { startDate: '2026-01-05' as never } },
+        ]),
+      ).toThrow(/not a valid, normalized record/);
+    });
+
+    it('does not report a change when a calendar is updated with equal content', () => {
+      const project = createProject({ calendars: [{ id: 'c' }] });
+      const week = project.getState().calendars.byId.get('c')?.week;
+      expect(
+        project.transact((tx) => {
+          tx.calendars.update('c', { week: { ...week } });
+        }),
+      ).toBeNull();
     });
 
     it('inverts dependency updates and removals', () => {

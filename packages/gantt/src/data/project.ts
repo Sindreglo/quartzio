@@ -47,10 +47,14 @@ export interface Project {
   toData: () => ProjectData;
 }
 
-const PREFIX: Record<StoreName, string> = { tasks: 'task', dependencies: 'dependency' };
+const PREFIX: Record<StoreName, string> = {
+  calendars: 'calendar',
+  tasks: 'task',
+  dependencies: 'dependency',
+};
 
 function createDefaultIdGenerator(): IdGenerator {
-  const counters: Record<StoreName, number> = { tasks: 0, dependencies: 0 };
+  const counters: Record<StoreName, number> = { calendars: 0, tasks: 0, dependencies: 0 };
   return (store, exists) => {
     let id: string;
     do id = `${PREFIX[store]}-${String(++counters[store])}`;
@@ -93,6 +97,7 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
           'Transaction functions must be synchronous. Do the async work before transact().',
         );
       }
+      recorder.validate();
     } finally {
       recorder.close();
       running = false;
@@ -122,7 +127,7 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
       assertNotRunning();
       if (operations.length === 0) return null;
       const result = applyOperations(state, operations);
-      assertValidState(result.state);
+      assertValidState(result.state, result.touched);
       const patch: Patch = { operations: [...operations], inverse: result.inverse };
       commit(result.state, patch);
       return patch;

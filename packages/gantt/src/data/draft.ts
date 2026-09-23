@@ -1,4 +1,4 @@
-import type { Id, ProjectState, StoreName, StoreRecords, Table } from './types';
+import type { Id, ProjectSettings, ProjectState, StoreName, StoreRecords, Table } from './types';
 
 export interface DraftTable<R extends { readonly id: Id }> {
   byId: Map<Id, R>;
@@ -13,6 +13,7 @@ export class Draft {
   private readonly base: ProjectState;
   private readonly writable = new Map<StoreName, DraftTable<{ readonly id: Id }>>();
   private readonly version = new Map<StoreName, number>();
+  private settings: ProjectSettings | undefined;
 
   constructor(base: ProjectState) {
     this.base = base;
@@ -34,14 +35,24 @@ export class Draft {
     return table as DraftTable<StoreRecords[S]>;
   }
 
+  readSettings(): ProjectSettings {
+    return this.settings ?? this.base.settings;
+  }
+
+  writeSettings(settings: ProjectSettings): void {
+    this.settings = settings;
+  }
+
   /** Increments on every write to the store; lets callers cache derived data per version. */
   versionOf(store: StoreName): number {
     return this.version.get(store) ?? 0;
   }
 
   finish(): ProjectState {
-    if (this.writable.size === 0) return this.base;
+    if (this.writable.size === 0 && this.settings === undefined) return this.base;
     return {
+      settings: this.readSettings(),
+      calendars: this.read('calendars'),
       tasks: this.read('tasks'),
       dependencies: this.read('dependencies'),
     };

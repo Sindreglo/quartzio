@@ -1,4 +1,5 @@
 import type { TimeUnit } from '../util/time';
+import type { TimeZone } from '../util/zone';
 
 export type Id = string | number;
 
@@ -32,9 +33,53 @@ export interface Dependency {
   readonly lagUnit: TimeUnit;
 }
 
+export type Weekday = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+
+/** Working time within a day, as wall-clock times "HH:mm". `end` is exclusive and may be "24:00". */
+export interface WorkingInterval {
+  readonly start: string;
+  readonly end: string;
+}
+
+/** Overrides the weekly schedule for a range of dates (holidays, vacations, extra working days). */
+export interface CalendarException {
+  /** "YYYY-MM-DD", a date in the project's time zone. */
+  readonly startDate: string;
+  /** "YYYY-MM-DD", inclusive. */
+  readonly endDate: string;
+  readonly name: string;
+  /** Working time on these dates. Empty means non-working. */
+  readonly intervals: readonly WorkingInterval[];
+}
+
+export interface Calendar {
+  readonly id: Id;
+  readonly name: string;
+  readonly week: Readonly<Record<Weekday, readonly WorkingInterval[]>>;
+  /** Later exceptions win where they overlap earlier ones. */
+  readonly exceptions: readonly CalendarException[];
+}
+
+export interface ProjectSettings {
+  /** Time zone for wall-clock logic (working hours, midnight, date strings). */
+  readonly timeZone: TimeZone;
+  /** The project calendar; `null` uses the built-in standard calendar (Mon–Fri 08:00–16:00). */
+  readonly calendarId: Id | null;
+  /** Conversion factors for durations in working time. */
+  readonly hoursPerDay: number;
+  readonly daysPerWeek: number;
+  readonly daysPerMonth: number;
+  /** 0 = Sunday … 6 = Saturday. */
+  readonly weekStartsOn: number;
+}
+
 // --- Input: what users may pass in. Looser than the stored records. ---
 
-export type DateInput = Date | number;
+/**
+ * A Date, epoch milliseconds, or an ISO 8601 string. Strings without an offset ("2026-10-05",
+ * "2026-10-05T08:00") are wall-clock times in the project's time zone.
+ */
+export type DateInput = Date | number | string;
 
 export interface TaskInput {
   id: Id;
@@ -58,8 +103,29 @@ export interface DependencyInput {
   lagUnit?: TimeUnit;
 }
 
+export interface CalendarExceptionInput {
+  startDate: string;
+  /** Defaults to `startDate`. */
+  endDate?: string;
+  name?: string;
+  /** Defaults to none (a non-working day). */
+  intervals?: readonly WorkingInterval[];
+}
+
+export interface CalendarInput {
+  id: Id;
+  name?: string;
+  /** Days left out are non-working. Omit entirely for Mon–Fri 08:00–16:00. */
+  week?: Partial<Record<Weekday, readonly WorkingInterval[]>>;
+  exceptions?: readonly CalendarExceptionInput[];
+}
+
+export type ProjectSettingsInput = { -readonly [K in keyof ProjectSettings]?: ProjectSettings[K] };
+
 /** Tasks may be a flat list with `parentId`, nested via `children`, or a mix. */
 export interface ProjectInput {
+  settings?: ProjectSettingsInput;
+  calendars?: readonly CalendarInput[];
   tasks?: readonly TaskInput[];
   dependencies?: readonly DependencyInput[];
 }
@@ -69,6 +135,8 @@ export interface ProjectInput {
  * It is also valid `ProjectInput`, so it can be loaded back as-is.
  */
 export interface ProjectData {
+  readonly settings: ProjectSettings;
+  readonly calendars: readonly Calendar[];
   readonly tasks: readonly Task[];
   readonly dependencies: readonly Dependency[];
 }
@@ -86,11 +154,14 @@ export interface Table<R extends { readonly id: Id }> {
 
 /** Immutable snapshot of a project. A new object is created on every change. */
 export interface ProjectState {
+  readonly settings: ProjectSettings;
+  readonly calendars: Table<Calendar>;
   readonly tasks: Table<Task>;
   readonly dependencies: Table<Dependency>;
 }
 
 export interface StoreRecords {
+  calendars: Calendar;
   tasks: Task;
   dependencies: Dependency;
 }
@@ -116,8 +187,13 @@ type OperationFor<S extends StoreName> =
       readonly index: number;
     };
 
-/** One low-level, JSON-serializable change to one record. */
-export type Operation = { [S in StoreName]: OperationFor<S> }[StoreName];
+export interface SettingsOperation {
+  readonly type: 'settings';
+  readonly changes: Partial<ProjectSettings>;
+}
+
+/** One low-level, JSON-serializable change to one record or to the project settings. */
+export type Operation = { [S in StoreName]: OperationFor<S> }[StoreName] | SettingsOperation;
 
 /** The result of one transaction. Applying `inverse` after `operations` restores the previous state. */
 export interface Patch {

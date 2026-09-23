@@ -7,7 +7,12 @@ const records = <R extends { readonly id: Id }>(table: Table<R>): R[] =>
 
 /** Converts a state snapshot to the canonical, JSON-serializable data format. */
 export function toProjectData(state: ProjectState): ProjectData {
-  return { tasks: records(state.tasks), dependencies: records(state.dependencies) };
+  return {
+    settings: state.settings,
+    calendars: records(state.calendars),
+    tasks: records(state.tasks),
+    dependencies: records(state.dependencies),
+  };
 }
 
 /**
@@ -15,7 +20,7 @@ export function toProjectData(state: ProjectState): ProjectData {
  * Meant for controlled usage: `onChange={({ patch }) => setData((data) => applyPatch(data, patch))}`.
  */
 export function applyPatch(data: ProjectData, patch: Patch): ProjectData {
-  const { state } = applyOperations(createProjectState(data), patch.operations);
-  assertValidState(state);
+  const { state, touched } = applyOperations(createProjectState(data), patch.operations);
+  assertValidState(state, touched);
   return toProjectData(state);
 }

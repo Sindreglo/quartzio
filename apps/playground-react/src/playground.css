@@ -162,3 +162,88 @@ body {
   overflow: auto;
   font-size: 12px;
 }
+
+.pg-form label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.pg-form select,
+.pg-form input {
+  padding: 4px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.pg-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.pg-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.pg-facts .pg-muted {
+  font-size: 12px;
+}
+
+.pg-days {
+  display: grid;
+  gap: 4px;
+}
+
+.pg-day {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.pg-day-label em {
+  color: #b45309;
+  font-style: normal;
+}
+
+.pg-day-track {
+  position: relative;
+  height: 18px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #f3f4f6 0,
+    #f3f4f6 calc(100% / 24 - 1px),
+    #e5e7eb calc(100% / 24 - 1px),
+    #e5e7eb calc(100% / 24)
+  );
+}
+
+.pg-work,
+.pg-task {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.pg-work {
+  background: #bbf7d0;
+}
+
+.pg-task {
+  top: 5px;
+  bottom: 5px;
+  border-radius: 3px;
+  background: #4f46e5;
+}
+
+.pg-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}

@@ -1,9 +1,9 @@
 import { QuartzioError } from '../util/errors';
 import { Draft, type DraftTable } from './draft';
-import { isId } from './normalize';
+import { isId, type TouchedRecords } from './normalize';
 import type { Id, Operation, ProjectState, StoreName } from './types';
 
-const STORES: readonly string[] = ['tasks', 'dependencies'] satisfies StoreName[];
+const STORES: readonly string[] = ['calendars', 'tasks', 'dependencies'] satisfies StoreName[];
 
 type AnyRecord = { readonly id: Id } & Record<string, unknown>;
 
@@ -15,6 +15,16 @@ const clamp = (value: number, max: number): number => Math.max(0, Math.min(value
  * semantic validation (parents exist, no cycles, ...) is the transaction's job.
  */
 export function applyOperation(draft: Draft, op: Operation): Operation {
+  if (op.type === 'settings') {
+    if (typeof op.changes !== 'object' || (op.changes as unknown) === null) {
+      throw new QuartzioError('Settings operation: "changes" must be an object.');
+    }
+    const settings = draft.readSettings();
+    const previous: Record<string, unknown> = {};
+    for (const key of Object.keys(op.changes) as (keyof typeof settings)[]) previous[key] = settings[key];
+    draft.writeSettings({ ...settings, ...op.changes });
+    return { type: 'settings', changes: previous };
+  }
   // Operations may come from outside (JSON, servers), so don't trust their shape.
   if (!STORES.includes(op.store)) throw new QuartzioError(`Unknown store "${op.store}" in operation.`);
   const table = draft.write(op.store) as unknown as DraftTable<AnyRecord>;
@@ -63,14 +73,31 @@ export function applyOperation(draft: Draft, op: Operation): Operation {
   }
 }
 
-/** Applies operations in order and returns the new state together with the inverse operations. */
+/**
+ * Applies operations in order and returns the new state, the inverse operations and which records were
+ * added or changed (for validation).
+ */
 export function applyOperations(
   state: ProjectState,
   operations: readonly Operation[],
-): { state: ProjectState; inverse: Operation[] } {
+): { state: ProjectState; inverse: Operation[]; touched: TouchedRecords } {
   const draft = new Draft(state);
-  const inverse = operations.map((op) => applyOperation(draft, op)).reverse();
-  return { state: draft.finish(), inverse };
+  const touched = {
+    settings: false,
+    calendars: new Set<Id>(),
+    tasks: new Set<Id>(),
+    dependencies: new Set<Id>(),
+  };
+  const inverse = operations
+    .map((op) => {
+      const result = applyOperation(draft, op);
+      if (op.type === 'settings') touched.settings = true;
+      else if (op.type === 'add') touched[op.store].add(op.record.id);
+      else if (op.type === 'update') touched[op.store].add(op.id);
+      return result;
+    })
+    .reverse();
+  return { state: draft.finish(), inverse, touched };
 }
 
 function unknownId(store: StoreName, id: Id, action: string): QuartzioError {
