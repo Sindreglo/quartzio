@@ -13,7 +13,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm check && changeset publish",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "verify:layout": "node scripts/verify-layout.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
@@ -28,7 +29,8 @@
     "prettier": "^3.9.9",
     "turbo": "^2.11.3",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.70.1"
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.0"
   },
   "engines": {
     "node": ">=24"

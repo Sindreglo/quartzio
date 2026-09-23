@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { BasicDemo } from './basic';
 import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
+import { TaskListDemo } from './task-list';
 import { TimeAxisDemo } from './timeaxis';
 
 export interface Demo {
@@ -40,5 +41,12 @@ export const demos: Demo[] = [
     description:
       'Presets from hours to years, header labels in any locale, and days and weeks in the project time zone. Hover to see xToDate.',
     Component: TimeAxisDemo,
+  },
+  {
+    id: 'task-list',
+    title: 'Task list',
+    description:
+      'Rows from the task tree with expand/collapse, configurable columns and virtualized rows. Try 10 000 tasks.',
+    Component: TaskListDemo,
   },
 ];

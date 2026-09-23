@@ -8,13 +8,13 @@
   --qz-color-border: #e5e7eb;
   --qz-color-grid-line: #eef0f3;
   --qz-color-header-background: #f9fafb;
-  --qz-header-row-height: 28px;
+  --qz-color-row-hover: #f5f7fb;
   --qz-header-font-size: 12px;
+  --qz-cell-padding: 8px;
+  --qz-tree-indent: 18px;
 
   position: relative;
   display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
   overflow: hidden;
   font-family: var(--qz-font-family);
   font-size: var(--qz-font-size);
@@ -23,49 +23,237 @@
   border: 1px solid var(--qz-color-border);
 }
 
+/*
+ * Set on every element, not inherited: a few containers use content-box for their own padding (the bottom
+ * spacers), and inheriting would pass that on to rows and cells, making padding add to column widths.
+ */
+.qz-gantt,
 .qz-gantt *,
 .qz-gantt *::before,
 .qz-gantt *::after {
-  box-sizing: inherit;
+  box-sizing: border-box;
 }
 
-/* --- Timeline --- */
+/*
+ * Layout: the task list and the timeline side by side, each with its own scroll area. The timeline owns
+ * both scrollbars (so the horizontal one only spans the timeline); the task list follows its vertical scroll
+ * with its own scrollbar hidden. Sizes come from the engine through custom properties on .qz-gantt.
+ */
+
+.qz-list {
+  flex: none;
+  /*
+   * As wide as its columns plus its 1px right border (so the columns fit exactly and there is no scrollbar),
+   * but never more than the max; narrower lists scroll horizontally.
+   */
+  width: min(calc(var(--qz-list-width) + 1px), var(--qz-list-max-width, 60%));
+  min-height: 0;
+  overflow: auto hidden;
+  border-right: 1px solid var(--qz-color-border);
+}
+
+.qz-list__content {
+  display: flex;
+  flex-direction: column;
+  width: var(--qz-list-width);
+  min-width: 100%;
+  height: 100%;
+}
+
+.qz-list .qz-grid__header {
+  flex: none;
+  background: var(--qz-color-header-background);
+  border-bottom: 1px solid var(--qz-color-border);
+}
+
+.qz-list__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden scroll;
+  scrollbar-width: none;
+}
+
+.qz-list__body::-webkit-scrollbar {
+  display: none;
+}
+
+.qz-list__canvas {
+  position: relative;
+  box-sizing: content-box;
+  /* Evens out the horizontal scrollbars, so both sides can scroll equally far down. */
+  padding-bottom: var(--qz-list-gap, 0);
+}
 
 .qz-timeline {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Outside the scroll area, so the vertical scrollbar only spans the rows; follows horizontal scrolling. */
+.qz-timeline__header {
+  flex: none;
+  height: var(--qz-header-height);
+  overflow: hidden;
+  background: var(--qz-color-header-background);
+  border-bottom: 1px solid var(--qz-color-border);
+}
+
+.qz-timeline__header-canvas {
+  position: relative;
+  box-sizing: content-box;
+  height: 100%;
+  /* Room for the body's vertical scrollbar, so the header can scroll as far right as the body. */
+  padding-right: var(--qz-header-gap, 0);
+}
+
+.qz-timeline__scroller {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.qz-timeline__canvas {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
 .qz-timeline__body {
   position: relative;
-  flex: 1;
-  /* One vertical line per tick. */
-  background-image: linear-gradient(to right, var(--qz-color-grid-line) 1px, transparent 1px);
-  background-size: var(--qz-tick-width, 32px) 100%;
+  box-sizing: content-box;
+  padding-bottom: var(--qz-timeline-gap, 0);
+  /* One vertical line per tick and one horizontal line per row. */
+  background-image:
+    linear-gradient(to right, var(--qz-color-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, transparent calc(var(--qz-row-height) - 1px), var(--qz-color-grid-line) 1px);
+  /* Small tiles (one tick by one row): a single huge tile (e.g. 10 000 rows tall) isn't painted by Chrome. */
+  background-size:
+    var(--qz-tick-width) var(--qz-row-height),
+    var(--qz-tick-width) var(--qz-row-height);
 }
 
-/* --- Header --- */
+/* --- Task list --- */
 
-.qz-header {
-  position: sticky;
+.qz-grid__header {
+  display: flex;
+  width: var(--qz-list-width);
+}
+
+.qz-grid__header-cell {
+  display: flex;
+  /* Exactly the column width from the engine: never shrink or grow with the list's width. */
+  flex: none;
+  align-items: flex-end;
+  padding: 0 var(--qz-cell-padding) 6px;
+  overflow: hidden;
+  font-size: var(--qz-header-font-size);
+  font-weight: 600;
+  color: var(--qz-color-text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-left: 1px solid var(--qz-color-grid-line);
+}
+
+.qz-grid__header-cell:first-child {
+  border-left: 0;
+}
+
+.qz-grid__body {
+  position: relative;
+}
+
+.qz-grid__row {
+  position: absolute;
   top: 0;
-  z-index: 2;
-  background: var(--qz-color-header-background);
-  border-bottom: 1px solid var(--qz-color-border);
+  left: 0;
+  display: flex;
+  width: var(--qz-list-width);
+  border-bottom: 1px solid var(--qz-color-grid-line);
 }
+
+.qz-grid__row:hover {
+  background: var(--qz-color-row-hover);
+}
+
+.qz-grid__cell {
+  display: flex;
+  /* Exactly the column width from the engine: never shrink or grow with the list's width. */
+  flex: none;
+  align-items: center;
+  padding: 0 var(--qz-cell-padding);
+  border-left: 1px solid var(--qz-color-grid-line);
+}
+
+.qz-grid__cell:first-child {
+  border-left: 0;
+}
+
+.qz-grid__cell--tree {
+  padding-left: calc(var(--qz-cell-padding) + var(--qz-depth) * var(--qz-tree-indent));
+}
+
+.qz-grid__text {
+  /* Lets long text shrink inside its fixed-width cell, so the ellipsis can kick in. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.qz-align-end {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.qz-tree__toggle,
+.qz-tree__spacer {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+}
+
+.qz-tree__toggle {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--qz-color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+
+.qz-tree__toggle::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentcolor;
+  transition: transform 0.1s;
+}
+
+.qz-grid__row[aria-expanded='true'] .qz-tree__toggle::before {
+  transform: rotate(90deg);
+}
+
+.qz-tree__toggle:hover {
+  background: var(--qz-color-grid-line);
+}
+
+.qz-tree__toggle:focus-visible {
+  outline: 2px solid currentcolor;
+}
+
+.qz-gantt__empty {
+  padding: 16px;
+  color: var(--qz-color-text-muted);
+}
+
+/* --- Timeline header --- */
 
 .qz-header__row {
   position: relative;
-  height: var(--qz-header-row-height);
   border-bottom: 1px solid var(--qz-color-grid-line);
 }
 
@@ -85,23 +273,20 @@
   border-left: 1px solid var(--qz-color-grid-line);
 }
 
-/* Sticky, so the label of a wide cell (a month, a year) stays in view while scrolling through it. */
-.qz-header__label {
+/*
+ * Labels of the larger units (every row but the bottom one: months, weeks, years) are sticky, so the label of a
+ * wide cell stays in view while scrolling through it, until the cell's end pushes it out. Like Bryntum's
+ * "sticky headers". Bottom-row cells are narrow, so their labels just scroll along.
+ */
+.qz-header__row:not(:last-child) .qz-header__label {
   position: sticky;
   left: 0;
+}
+
+.qz-header__label {
   min-width: 0;
   padding: 0 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-/* --- Placeholder (until rows and bars are rendered) --- */
-
-.qz-gantt__placeholder {
-  position: sticky;
-  left: 0;
-  display: inline-block;
-  padding: 16px;
-  color: var(--qz-color-text-muted);
 }

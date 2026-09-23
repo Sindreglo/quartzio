@@ -279,4 +279,10 @@ describe('review regressions', () => {
     );
     expect(wall(calendar.addWorkingTime(at(2026, 10, 5, 10), 2 * H))).toBe('2026-10-06 11:00');
   });
+
+  it('refuses calculations spanning more than ~25 years (likely typos) instead of freezing', () => {
+    expect(() => standard.addWorkingTime(at(2026, 10, 5, 8), 30 * 260 * 8 * H)).toThrow(/25 years/);
+    expect(() => standard.workingTimeBetween(at(2026, 1, 1), at(2060, 1, 1))).toThrow(/25 years/);
+    expect(standard.workingTimeBetween(at(2026, 1, 1), at(2046, 1, 1))).toBeGreaterThan(0);
+  });
 });

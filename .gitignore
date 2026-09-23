@@ -5,6 +5,7 @@ dist/
 .DS_Store
 coverage/
 .vite/
+.layout/
 .claude/settings.local.json
 
 # Lokale notater og AI-oppsett

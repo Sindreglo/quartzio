@@ -114,7 +114,7 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
     subscribe: (listener) => changes.subscribe(listener),
     load(nextInput) {
       assertNotRunning();
-      commit(createProjectState(nextInput), null);
+      commit(createProjectState(nextInput, state), null);
     },
     plan,
     transact(fn) {

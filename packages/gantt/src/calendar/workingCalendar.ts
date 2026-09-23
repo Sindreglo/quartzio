@@ -36,6 +36,11 @@ export interface WorkingCalendar {
 
 /** How far to search for working time before deciding the calendar has none (~10 years). */
 const MAX_EMPTY_DAYS = 3660;
+/**
+ * The longest span (~25 years) any calculation walks through day by day. Longer spans are almost always
+ * typos (a year like 2126 instead of 2026), and walking them would freeze the page, so they throw instead.
+ */
+export const MAX_SPAN_DAYS = 9150;
 const MAX_CACHED_DAYS = 20_000;
 
 type MinuteInterval = readonly [from: number, to: number];
@@ -90,7 +95,8 @@ export function createWorkingCalendar(calendar: Calendar, zone: TimeZone): Worki
   const scan = (time: number, direction: 1 | -1, visit: (interval: Interval) => boolean): void => {
     let day = wallDay(time, zone);
     let emptyDays = 0;
-    for (;;) {
+    for (let scanned = 0; ; scanned++) {
+      if (scanned > MAX_SPAN_DAYS) throw tooLong();
       const intervals = intervalsOnDay(day);
       if (intervals.length === 0) {
         // Only exceptions can produce long runs of empty days when the week has working time.
@@ -104,6 +110,11 @@ export function createWorkingCalendar(calendar: Calendar, zone: TimeZone): Worki
       day += direction;
     }
   };
+
+  const tooLong = (): QuartzioError =>
+    new QuartzioError(
+      `Working-time calculation spans more than ${String(MAX_SPAN_DAYS)} days (~25 years). Check the dates and durations.`,
+    );
 
   const assertFinite = (...values: number[]): void => {
     if (!values.every(Number.isFinite)) {
@@ -151,6 +162,7 @@ export function createWorkingCalendar(calendar: Calendar, zone: TimeZone): Worki
 
   const workingIntervals = (from: number, to: number): Interval[] => {
     assertFinite(from, to);
+    if (wallDay(to, zone) - wallDay(from, zone) > MAX_SPAN_DAYS) throw tooLong();
     const result: Interval[] = [];
     for (let day = wallDay(from, zone), last = wallDay(to, zone); day <= last; day++) {
       for (const [start, end] of intervalsOnDay(day)) {

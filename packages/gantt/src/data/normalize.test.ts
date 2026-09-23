@@ -202,4 +202,87 @@ describe('createProjectState', () => {
       /"name" must be a string/,
     );
   });
+
+  describe('reusing unchanged records', () => {
+    const input = {
+      settings: { timeZone: 'UTC' },
+      calendars: [{ id: 'c' }],
+      tasks: [
+        { id: 1, name: 'A' },
+        { id: 2, name: 'B' },
+      ],
+      dependencies: [{ id: 'd', from: 1, to: 2 }],
+    };
+
+    it('keeps records and tables from the previous state when nothing changed', () => {
+      const first = createProjectState(input);
+      const second = createProjectState(input, first);
+      expect(second.tasks).toBe(first.tasks);
+      expect(second.dependencies).toBe(first.dependencies);
+      expect(second.calendars).toBe(first.calendars);
+      expect(second.settings).toBe(first.settings);
+    });
+
+    it('keeps unchanged records when one record changed', () => {
+      const first = createProjectState(input);
+      const second = createProjectState(
+        {
+          ...input,
+          tasks: [
+            { id: 1, name: 'A' },
+            { id: 2, name: 'Changed' },
+          ],
+        },
+        first,
+      );
+      expect(second.tasks).not.toBe(first.tasks);
+      expect(second.tasks.byId.get(1)).toBe(first.tasks.byId.get(1));
+      expect(second.tasks.byId.get(2)?.name).toBe('Changed');
+      expect(second.dependencies).toBe(first.dependencies);
+    });
+
+    it('reuses canonical input records as they are', () => {
+      const canonical = createProjectState(input);
+      const task = canonical.tasks.byId.get(1);
+      const again = createProjectState({
+        tasks: [...canonical.tasks.byId.values()],
+        settings: canonical.settings,
+      });
+      expect(again.tasks.byId.get(1)).toBe(task);
+    });
+
+    it('does not reuse input records with extra fields', () => {
+      const withChildren = { id: 1, name: 'A', children: [] };
+      const state = createProjectState({ tasks: [withChildren] });
+      expect(state.tasks.byId.get(1)).not.toBe(withChildren);
+      expect(state.tasks.byId.get(1)).not.toHaveProperty('children');
+    });
+
+    it('notices a changed order even when all records are the same', () => {
+      const first = createProjectState(input);
+      const second = createProjectState(
+        { ...input, tasks: [input.tasks[1], input.tasks[0]] as never },
+        first,
+      );
+      expect(second.tasks).not.toBe(first.tasks);
+      expect(second.tasks.order).toEqual([2, 1]);
+    });
+  });
+
+  describe('review regressions (4a)', () => {
+    it('rejects dates outside the years 1000–9999', () => {
+      expect(() => createProjectState({ tasks: [{ id: 1, endDate: Date.UTC(20260, 0, 1) }] })).toThrow(
+        /1000 and 9999/,
+      );
+      expect(() =>
+        createProjectState({ tasks: [{ id: 1, startDate: new Date(Date.UTC(999, 0, 1)) }] }),
+      ).toThrow(/1000 and 9999/);
+    });
+
+    it('rejects children that are not an array', () => {
+      expect(() => createProjectState({ tasks: [{ id: 1, children: {} as never }] })).toThrow(
+        /"children" must be an array/,
+      );
+    });
+  });
 });

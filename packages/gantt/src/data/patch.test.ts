@@ -142,4 +142,16 @@ describe('patches', () => {
       for (const [parent, children] of model) expect(tree.children(parent)).toEqual(children);
     }
   });
+
+  it('keep untouched records identical when applied with applyPatch', () => {
+    const project = createProject({ tasks: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+    const data = project.toData();
+    const patch = project.transact((tx) => {
+      tx.tasks.update(2, { name: 'Changed' });
+    });
+    const next = applyPatch(data, patch as Patch);
+    expect(next.tasks[0]).toBe(data.tasks[0]);
+    expect(next.tasks[2]).toBe(data.tasks[2]);
+    expect(next.tasks[1]).not.toBe(data.tasks[1]);
+  });
 });

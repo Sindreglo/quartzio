@@ -71,7 +71,22 @@ export type { TimeUnit } from './util/time';
 export type { TimeZone, WallTime, ZonedWallTime } from './util/zone';
 export { addUnits, fromWallTime, isoWeek, isValidTimeZone, startOfUnit, toWallTime } from './util/zone';
 
+// Scheduling
+export type { EffectiveDates } from './scheduling/effective';
+export { computeEffectiveDates } from './scheduling/effective';
+
 // View
+export type {
+  BuiltInColumnId,
+  CellContext,
+  Column,
+  ColumnDefinition,
+  ColumnInput,
+  ColumnsState,
+} from './view/columns';
+export { DEFAULT_COLUMNS } from './view/columns';
+export { createGantt } from './view/createGantt';
+export type { Row, RowsState } from './view/rows';
 export type {
   GanttController,
   GanttDataChange,
@@ -79,5 +94,4 @@ export type {
   HeaderState,
   Viewport,
   ViewState,
-} from './view/createGantt';
-export { createGantt } from './view/createGantt';
+} from './view/types';

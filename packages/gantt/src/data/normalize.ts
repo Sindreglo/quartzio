@@ -75,6 +75,10 @@ export function isId(value: unknown): value is Id {
 
 // --- Fields ---
 
+/** Dates must fall in the years 1000–9999; anything outside is almost certainly a typo. */
+const MIN_TIME = Date.UTC(1000, 0, 1);
+const MAX_TIME = Date.UTC(10_000, 0, 1) - 1;
+
 export function toTime(
   value: DateInput | null | undefined,
   field: string,
@@ -92,6 +96,9 @@ export function toTime(
     throw new QuartzioError(
       `${owner}: "${field}" must be a valid Date, epoch milliseconds or an ISO 8601 string like "2026-10-05".`,
     );
+  }
+  if (time < MIN_TIME || time > MAX_TIME) {
+    throw new QuartzioError(`${owner}: "${field}" must be between the years 1000 and 9999.`);
   }
   return time;
 }
@@ -386,9 +393,36 @@ function assertTaskHierarchy(tasks: ReadonlyMap<Id, Task>): void {
 
 // --- Whole project ---
 
-/** Normalizes and validates user input into an immutable ProjectState. Throws QuartzioError on invalid data. */
-export function createProjectState(input: ProjectInput = {}): ProjectState {
-  const settings = normalizeSettings(input.settings);
+/** The first candidate structurally equal to `record`, or `record` itself. */
+function reuse<R>(record: R, ...candidates: unknown[]): R {
+  for (const candidate of candidates) {
+    if (candidate !== undefined && isEqual(candidate, record)) return candidate as R;
+  }
+  return record;
+}
+
+/** The previous table when order and every record are unchanged, so downstream caches keep hitting. */
+function reuseTable<R extends { readonly id: Id }>(
+  table: Table<R>,
+  previous: Table<R> | undefined,
+): Table<R> {
+  if (previous?.order.length !== table.order.length) return table;
+  for (let i = 0; i < table.order.length; i++) {
+    const id = table.order[i] as Id;
+    if (previous.order[i] !== id || previous.byId.get(id) !== table.byId.get(id)) return table;
+  }
+  return previous;
+}
+
+/**
+ * Normalizes and validates user input into an immutable ProjectState. Throws QuartzioError on invalid data.
+ *
+ * Unchanged records keep their identity: a record equal to the one in `previous` (or to the input object
+ * itself, when that is already canonical) is reused, and so is a whole table when nothing in it changed.
+ * That lets memoized views skip work after `load()`/`applyPatch()`. Treat data you pass in as immutable.
+ */
+export function createProjectState(input: ProjectInput = {}, previous?: ProjectState): ProjectState {
+  const settings = reuse(normalizeSettings(input.settings), previous?.settings, input.settings);
 
   const calendars = new Map<Id, Calendar>();
   const calendarOrder: Id[] = [];
@@ -397,14 +431,20 @@ export function createProjectState(input: ProjectInput = {}): ProjectState {
       throw new QuartzioError('Calendar id must be a non-empty string or a finite number.');
     const owner = label('Calendar', calendar.id);
     if (calendars.has(calendar.id)) throw new QuartzioError(`${owner} is defined more than once.`);
-    calendars.set(calendar.id, { id: calendar.id, ...normalizeCalendarFields(calendar, owner) });
+    const record: Calendar = { id: calendar.id, ...normalizeCalendarFields(calendar, owner) };
+    calendars.set(calendar.id, reuse(record, previous?.calendars.byId.get(calendar.id), calendar));
     calendarOrder.push(calendar.id);
   }
   assertCalendarExists(calendars, settings.calendarId);
 
   const tasks = new Map<Id, Task>();
   const taskOrder: Id[] = [];
-  const visit = (task: TaskInput, nestedParent: Id | undefined): void => {
+  // Depth-first with an explicit stack (not recursion), so deeply nested input can't overflow the stack.
+  const stack: [TaskInput, Id | undefined][] = [...(input.tasks ?? [])]
+    .reverse()
+    .map((task): [TaskInput, Id | undefined] => [task, undefined]);
+  while (stack.length > 0) {
+    const [task, nestedParent] = stack.pop() as [TaskInput, Id | undefined];
     if (!isId(task.id)) throw new QuartzioError('Task id must be a non-empty string or a finite number.');
     const owner = label('Task', task.id);
     if (tasks.has(task.id)) throw new QuartzioError(`${owner} is defined more than once.`);
@@ -419,11 +459,12 @@ export function createProjectState(input: ProjectInput = {}): ProjectState {
       ...normalizeTaskFields(task, owner, settings.timeZone),
     };
     assertTaskDates(record);
-    tasks.set(task.id, record);
+    tasks.set(task.id, reuse(record, previous?.tasks.byId.get(task.id), task));
     taskOrder.push(task.id);
-    for (const child of task.children ?? []) visit(child, task.id);
-  };
-  for (const task of input.tasks ?? []) visit(task, undefined);
+    const children: unknown = task.children ?? [];
+    if (!Array.isArray(children)) throw new QuartzioError(`${owner}: "children" must be an array.`);
+    for (let i = children.length - 1; i >= 0; i--) stack.push([children[i] as TaskInput, task.id]);
+  }
   assertTaskHierarchy(tasks);
 
   const dependencies = new Map<Id, Dependency>();
@@ -435,20 +476,24 @@ export function createProjectState(input: ProjectInput = {}): ProjectState {
     const owner = label('Dependency', dependency.id);
     if (dependencies.has(dependency.id)) throw new QuartzioError(`${owner} is defined more than once.`);
     assertDependencyEnds(tasks, dependency.from, dependency.to, owner);
-    dependencies.set(dependency.id, {
+    const record: Dependency = {
       id: dependency.id,
       from: dependency.from,
       to: dependency.to,
       ...normalizeDependencyFields(dependency, owner),
-    });
+    };
+    dependencies.set(
+      dependency.id,
+      reuse(record, previous?.dependencies.byId.get(dependency.id), dependency),
+    );
     dependencyOrder.push(dependency.id);
   }
 
   return {
     settings,
-    calendars: { byId: calendars, order: calendarOrder },
-    tasks: { byId: tasks, order: taskOrder },
-    dependencies: { byId: dependencies, order: dependencyOrder },
+    calendars: reuseTable({ byId: calendars, order: calendarOrder }, previous?.calendars),
+    tasks: reuseTable({ byId: tasks, order: taskOrder }, previous?.tasks),
+    dependencies: reuseTable({ byId: dependencies, order: dependencyOrder }, previous?.dependencies),
   };
 }
 
