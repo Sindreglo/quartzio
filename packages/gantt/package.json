@@ -1,0 +1,44 @@
+{
+  "name": "@quartzio/gantt",
+  "version": "0.0.0",
+  "description": "Headless, framework-agnostic Gantt chart engine",
+  "license": "MIT",
+  "author": "Sindre Glomnes",
+  "keywords": [
+    "gantt",
+    "gantt-chart",
+    "scheduling",
+    "timeline",
+    "headless",
+    "project-management"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "@quartzio/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": {
+      "@quartzio/source": "./src/styles.css",
+      "default": "./dist/styles.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "tsdown": "^0.23.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

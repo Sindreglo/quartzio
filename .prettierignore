@@ -1,0 +1,6 @@
+dist
+coverage
+pnpm-lock.yaml
+.changeset/*.md
+CLAUDE.md
+docs

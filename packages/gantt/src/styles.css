@@ -1,0 +1,31 @@
+/* All theming goes through --qz-* variables. Override them on .qz-gantt or any ancestor. */
+.qz-gantt {
+  --qz-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --qz-font-size: 13px;
+  --qz-color-text: #1f2328;
+  --qz-color-text-muted: #6b7280;
+  --qz-color-background: #ffffff;
+  --qz-color-border: #e5e7eb;
+
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: var(--qz-font-family);
+  font-size: var(--qz-font-size);
+  color: var(--qz-color-text);
+  background: var(--qz-color-background);
+  border: 1px solid var(--qz-color-border);
+}
+
+.qz-gantt *,
+.qz-gantt *::before,
+.qz-gantt *::after {
+  box-sizing: inherit;
+}
+
+.qz-gantt__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--qz-color-text-muted);
+}

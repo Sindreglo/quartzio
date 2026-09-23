@@ -1,0 +1,69 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: #1f2328;
+  background: #f6f7f9;
+}
+
+body {
+  margin: 0;
+}
+
+.pg-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.pg-nav {
+  padding: 16px;
+  border-right: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.pg-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-nav a {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pg-nav a:hover {
+  background: #f3f4f6;
+}
+
+.pg-nav a[aria-current='page'] {
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.pg-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.pg-main {
+  padding: 24px;
+  min-width: 0;
+}
+
+.pg-header h2 {
+  margin: 0 0 4px;
+}
+
+.pg-header p {
+  margin: 0 0 16px;
+  color: #6b7280;
+}

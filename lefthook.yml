@@ -1,0 +1,13 @@
+pre-commit:
+  jobs:
+    - name: prettier
+      glob: '*.{js,mjs,ts,tsx,json,css,md,yml,yaml}'
+      run: pnpm prettier --check {staged_files}
+    - name: eslint
+      glob: '*.{js,mjs,ts,tsx}'
+      run: pnpm eslint {staged_files}
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm commitlint --edit {1}

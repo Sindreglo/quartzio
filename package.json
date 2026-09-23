@@ -1,0 +1,37 @@
+{
+  "name": "quartzio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter playground-react dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write . && eslint --fix .",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm check && changeset publish",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "lefthook": "^2.1.14",
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.3.0"
+}

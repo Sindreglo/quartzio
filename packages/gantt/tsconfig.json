@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM types: the engine must run anywhere (browser, Node, workers).
+    "lib": ["ES2022"],
+    "types": [],
+    // Forces explicit types on exports, which keeps the public API deliberate and speeds up .d.ts generation.
+    "declaration": true,
+    "isolatedDeclarations": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": [],
+    // Forces explicit types on exports, which keeps the public API deliberate and speeds up .d.ts generation.
+    "declaration": true,
+    "isolatedDeclarations": true
+  },
+  "include": ["src"]
+}
