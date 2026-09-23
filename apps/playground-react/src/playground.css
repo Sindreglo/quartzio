@@ -67,3 +67,98 @@ body {
   margin: 0 0 16px;
   color: #6b7280;
 }
+
+.pg-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.pg-stack h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.pg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pg-toolbar button {
+  padding: 5px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pg-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pg-divider {
+  width: 1px;
+  height: 20px;
+  background: #e5e7eb;
+}
+
+.pg-error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.pg-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.pg-panel {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pg-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-tree-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-tree-row:hover {
+  background: #f3f4f6;
+}
+
+.pg-tree-row[aria-pressed='true'] {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.pg-muted {
+  color: #9ca3af;
+}
+
+.pg-code {
+  max-height: 360px;
+  margin: 0;
+  overflow: auto;
+  font-size: 12px;
+}

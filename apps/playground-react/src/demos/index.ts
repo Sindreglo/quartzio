@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { BasicDemo } from './basic';
+import { DataModelDemo } from './data-model';
 
 export interface Demo {
   /** Used in the URL hash, e.g. #basic */
@@ -16,5 +17,12 @@ export const demos: Demo[] = [
     title: 'Basic',
     description: 'The Gantt component with default options.',
     Component: BasicDemo,
+  },
+  {
+    id: 'data-model',
+    title: 'Data model',
+    description:
+      'Controlled data: edits are transactions that produce patches. Undo/redo applies inverse patches with applyPatch.',
+    Component: DataModelDemo,
   },
 ];

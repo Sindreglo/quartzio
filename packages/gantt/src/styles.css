@@ -23,7 +23,7 @@
   box-sizing: inherit;
 }
 
-.qz-gantt__empty {
+.qz-gantt__placeholder {
   display: grid;
   place-items: center;
   height: 100%;

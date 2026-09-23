@@ -56,6 +56,8 @@ export default defineConfig(
     },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
+      // Conflicts with no-non-null-assertion (from strict): we prefer explicit `as T` over `!`.
+      '@typescript-eslint/non-nullable-type-assertion-style': 'off',
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
