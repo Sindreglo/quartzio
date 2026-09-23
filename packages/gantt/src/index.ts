@@ -52,6 +52,18 @@ export type {
   WorkingInterval,
 } from './data/types';
 
+// Time axis
+export type {
+  HeaderCellContext,
+  HeaderFormat,
+  HeaderFormatName,
+  HeaderRow,
+  ViewPreset,
+} from './timeaxis/presets';
+export { DEFAULT_PRESET_ID, resolvePreset, VIEW_PRESETS } from './timeaxis/presets';
+export type { HeaderCell, Tick, TimeAxis, TimeAxisOptions } from './timeaxis/timeAxis';
+export { createTimeAxis } from './timeaxis/timeAxis';
+
 // Utilities
 export { QuartzioError } from './util/errors';
 export { parseDateString } from './util/parse';
@@ -60,5 +72,12 @@ export type { TimeZone, WallTime, ZonedWallTime } from './util/zone';
 export { addUnits, fromWallTime, isoWeek, isValidTimeZone, startOfUnit, toWallTime } from './util/zone';
 
 // View
-export type { GanttController, GanttDataChange, GanttOptions, Viewport, ViewState } from './view/createGantt';
+export type {
+  GanttController,
+  GanttDataChange,
+  GanttOptions,
+  HeaderState,
+  Viewport,
+  ViewState,
+} from './view/createGantt';
 export { createGantt } from './view/createGantt';

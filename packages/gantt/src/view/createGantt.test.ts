@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createProject } from '../data/project';
 import { applyPatch } from '../data/serialize';
 import type { ProjectData, ProjectInput } from '../data/types';
+import { QuartzioError } from '../util/errors';
 import { createGantt, type GanttDataChange } from './createGantt';
 
 const data: ProjectInput = { tasks: [{ id: 1, name: 'One' }] };
@@ -220,5 +221,151 @@ describe('createGantt', () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(gantt.getState().project.tasks.order).toEqual([1]);
+  });
+
+  describe('time axis', () => {
+    const tasks: ProjectInput = {
+      settings: { timeZone: 'Europe/Oslo' },
+      tasks: [
+        { id: 1, startDate: '2026-10-05', endDate: '2026-10-09' },
+        { id: 2, startDate: '2026-10-12', endDate: '2026-10-16' },
+      ],
+    };
+
+    it('covers the tasks with some padding by default', () => {
+      const gantt = createGantt({ defaultData: tasks, preset: 'weekAndDay' });
+      const { timeAxis } = gantt.getState();
+      expect(timeAxis.start).toBe(Date.UTC(2026, 9, 2, 22)); // 3 October, two days before the first task
+      expect(timeAxis.end).toBeGreaterThanOrEqual(Date.UTC(2026, 9, 17, 22));
+      expect(timeAxis.preset.id).toBe('weekAndDay');
+    });
+
+    it('fills the viewport', () => {
+      const gantt = createGantt({ defaultData: tasks, startDate: '2026-10-05', endDate: '2026-10-06' });
+      gantt.setViewport({ width: 2000 });
+      expect(gantt.getState().timeAxis.totalWidth).toBeGreaterThanOrEqual(2000);
+    });
+
+    it('uses explicit dates, preset and locale, and reacts to changes', () => {
+      const gantt = createGantt({
+        defaultData: tasks,
+        preset: 'monthAndYear',
+        startDate: '2026-01-01',
+        endDate: '2027-01-01',
+        locale: 'nb-NO',
+      });
+      expect(gantt.getState().header.rows[1]?.[0]?.label).toBe('jan');
+
+      gantt.setOptions({ locale: 'en-US' });
+      expect(gantt.getState().header.rows[1]?.[0]?.label).toBe('Jan');
+
+      gantt.setOptions({ preset: 'quarterAndYear' });
+      expect(gantt.getState().header.rows[1]?.[0]?.label).toBe('Q1');
+    });
+
+    it('renders header cells around the viewport and reuses them while scrolling nearby', () => {
+      const gantt = createGantt({
+        defaultData: tasks,
+        preset: 'weekAndDay',
+        startDate: '2026-01-01',
+        endDate: '2027-01-01',
+      });
+      gantt.setViewport({ width: 320, scrollLeft: 32 * 100 });
+      const header = gantt.getState().header;
+      const days = header.rows[2] ?? [];
+      expect(days.length).toBeLessThan(40); // about three viewports of 10 days, not 365
+      expect(days[0]?.x).toBeLessThanOrEqual(32 * 100);
+
+      gantt.setViewport({ scrollLeft: 32 * 105 });
+      expect(gantt.getState().header).toBe(header);
+    });
+
+    it('keeps the same axis object when an edit does not change the range', () => {
+      const gantt = createGantt({ defaultData: tasks, startDate: '2026-10-01', endDate: '2026-11-01' });
+      const { timeAxis } = gantt.getState();
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { name: 'Renamed' });
+      });
+      expect(gantt.getState().timeAxis).toBe(timeAxis);
+    });
+  });
+
+  describe('time axis options (review regressions)', () => {
+    const tasks: ProjectInput = {
+      settings: { timeZone: 'Europe/Oslo' },
+      tasks: [{ id: 1, startDate: '2026-10-05', endDate: '2026-10-09' }],
+    };
+
+    it('rejects invalid options without changing anything, and keeps working afterwards', () => {
+      const gantt = createGantt({ defaultData: tasks });
+      const before = gantt.getState();
+      for (const options of [
+        { startDate: 'garbage' },
+        { locale: 'not a locale!' },
+        { preset: 'nope' },
+        { startDate: '2026-10-10', endDate: '2026-10-01' },
+      ]) {
+        expect(() => {
+          gantt.setOptions(options);
+        }).toThrow(QuartzioError);
+        expect(gantt.getState()).toBe(before);
+      }
+      gantt.setViewport({ width: 800 });
+      expect(gantt.getState().viewport.width).toBe(800);
+    });
+
+    it('does not load new data when another option in the same call is invalid', () => {
+      const gantt = createGantt({ data: tasks });
+      expect(() => {
+        gantt.setOptions({ data: { tasks: [] }, preset: 'nope' });
+      }).toThrow(QuartzioError);
+      expect(gantt.getState().project.tasks.order).toEqual([1]);
+    });
+
+    it('applies data and preset together, with one update', () => {
+      const gantt = createGantt({ data: tasks, preset: 'hourAndDay' });
+      const listener = vi.fn();
+      gantt.subscribe(listener);
+      gantt.setOptions({
+        data: { tasks: [{ id: 1, startDate: '2000-01-01', endDate: '2050-01-01' }] },
+        preset: 'manyYears',
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(gantt.getState().timeAxis.preset.id).toBe('manyYears');
+    });
+
+    it('survives a task date with a typo in the year (cuts the axis short instead of failing)', () => {
+      const onChange = vi.fn();
+      const gantt = createGantt({ defaultData: tasks, preset: 'hourAndDay', onChange });
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { endDate: '3026-10-09' });
+      });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(gantt.getState().project.tasks.byId.get(1)?.endDate).toBe(Date.UTC(3026, 9, 8, 22));
+      expect(gantt.getState().timeAxis.tickCount).toBe(200_000);
+    });
+
+    it('treats an equal Date as no change and null as not set', () => {
+      const gantt = createGantt({ defaultData: tasks, startDate: new Date(Date.UTC(2026, 9, 1)) });
+      const listener = vi.fn();
+      gantt.subscribe(listener);
+      gantt.setOptions({ startDate: new Date(Date.UTC(2026, 9, 1)) });
+      expect(listener).not.toHaveBeenCalled();
+
+      gantt.setOptions({ startDate: null as never });
+      expect(gantt.getState().timeAxis.start).toBe(Date.UTC(2026, 9, 2, 22)); // default: 2 days before the task
+    });
+
+    it('keeps the axis when resizing slightly or moving the last task within the same tick', () => {
+      const gantt = createGantt({ defaultData: tasks });
+      gantt.setViewport({ width: 810 }); // 26 ticks of 32 px
+      const { timeAxis } = gantt.getState();
+      gantt.setViewport({ width: 830 }); // still 26 ticks
+      expect(gantt.getState().timeAxis).toBe(timeAxis);
+      gantt.transact((tx) => {
+        tx.tasks.update(1, { endDate: '2026-10-09T01:00' });
+      });
+      expect(gantt.getState().timeAxis).toBe(timeAxis);
+    });
   });
 });

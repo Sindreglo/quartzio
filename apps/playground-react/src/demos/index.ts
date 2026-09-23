@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { BasicDemo } from './basic';
 import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
+import { TimeAxisDemo } from './timeaxis';
 
 export interface Demo {
   /** Used in the URL hash, e.g. #basic */
@@ -32,5 +33,12 @@ export const demos: Demo[] = [
     description:
       'Durations are working time: start + duration skips nights, weekends and holidays, in the chosen time zone. Try a start before a DST change or a holiday.',
     Component: CalendarDemo,
+  },
+  {
+    id: 'timeaxis',
+    title: 'Time axis',
+    description:
+      'Presets from hours to years, header labels in any locale, and days and weeks in the project time zone. Hover to see xToDate.',
+    Component: TimeAxisDemo,
   },
 ];

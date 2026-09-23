@@ -6,8 +6,14 @@
   --qz-color-text-muted: #6b7280;
   --qz-color-background: #ffffff;
   --qz-color-border: #e5e7eb;
+  --qz-color-grid-line: #eef0f3;
+  --qz-color-header-background: #f9fafb;
+  --qz-header-row-height: 28px;
+  --qz-header-font-size: 12px;
 
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
   font-family: var(--qz-font-family);
@@ -23,9 +29,79 @@
   box-sizing: inherit;
 }
 
-.qz-gantt__placeholder {
-  display: grid;
-  place-items: center;
+/* --- Timeline --- */
+
+.qz-timeline {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.qz-timeline__canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.qz-timeline__body {
+  position: relative;
+  flex: 1;
+  /* One vertical line per tick. */
+  background-image: linear-gradient(to right, var(--qz-color-grid-line) 1px, transparent 1px);
+  background-size: var(--qz-tick-width, 32px) 100%;
+}
+
+/* --- Header --- */
+
+.qz-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--qz-color-header-background);
+  border-bottom: 1px solid var(--qz-color-border);
+}
+
+.qz-header__row {
+  position: relative;
+  height: var(--qz-header-row-height);
+  border-bottom: 1px solid var(--qz-color-grid-line);
+}
+
+.qz-header__row:last-child {
+  border-bottom: 0;
+}
+
+.qz-header__cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
   height: 100%;
+  font-size: var(--qz-header-font-size);
+  color: var(--qz-color-text-muted);
+  border-left: 1px solid var(--qz-color-grid-line);
+}
+
+/* Sticky, so the label of a wide cell (a month, a year) stays in view while scrolling through it. */
+.qz-header__label {
+  position: sticky;
+  left: 0;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --- Placeholder (until rows and bars are rendered) --- */
+
+.qz-gantt__placeholder {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  padding: 16px;
   color: var(--qz-color-text-muted);
 }

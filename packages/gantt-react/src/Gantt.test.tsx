@@ -1,5 +1,5 @@
 import type { GanttController, ProjectData, ProjectInput } from '@quartzio/gantt';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -73,6 +73,44 @@ describe('<Gantt />', () => {
   });
 
   it('renders on the server', () => {
-    expect(renderToString(<Gantt defaultData={data} />)).toContain('2 tasks');
+    const html = renderToString(<Gantt defaultData={data} />);
+    expect(html).toContain('2 tasks');
+    expect(html).toContain('qz-header__cell');
+  });
+
+  it('renders the time axis header in the given preset and locale', () => {
+    const { container } = render(
+      <Gantt
+        defaultData={{ settings: { timeZone: 'UTC' } }}
+        preset="monthAndYear"
+        startDate="2026-01-01"
+        endDate="2027-01-01"
+        locale="nb-NO"
+      />,
+    );
+    const labels = [...container.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].map(
+      (cell) => cell.textContent,
+    );
+    expect(labels.slice(0, 3)).toEqual(['jan', 'feb', 'mar']);
+  });
+
+  it('updates the header when props change', () => {
+    const props = {
+      defaultData: { settings: { timeZone: 'UTC' } },
+      startDate: '2026-01-01',
+      endDate: '2027-01-01',
+    };
+    const { container, rerender } = render(<Gantt {...props} preset="monthAndYear" />);
+    rerender(<Gantt {...props} preset="quarterAndYear" />);
+    expect(container.querySelector('.qz-header__row:last-child .qz-header__cell')?.textContent).toBe('Q1');
+  });
+
+  it('reports scrolling to the engine', () => {
+    const ref = createRef<GanttController>();
+    const { container } = render(<Gantt ref={ref} defaultData={data} />);
+    const timeline = container.querySelector('.qz-timeline') as HTMLElement;
+    timeline.scrollLeft = 250;
+    fireEvent.scroll(timeline);
+    expect(ref.current?.getState().viewport.scrollLeft).toBe(250);
   });
 });

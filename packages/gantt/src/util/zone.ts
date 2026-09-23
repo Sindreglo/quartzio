@@ -87,29 +87,47 @@ function intlOffset(time: number, zone: string): number {
   return wallAsUtc - (time - mod(time, MS_PER_SECOND));
 }
 
-// Offsets are cached per 15 minutes. Most transitions fall on quarter hours, but not all (e.g. St. John's
-// before 2011), so a bucket is only cached when the offset is the same at both of its ends.
-const OFFSET_BUCKET = 15 * MS_PER_MINUTE;
+// Offsets are cached in two levels. A whole day is cached as one entry when the offset is the same at both
+// ends (real zones never change twice in a day). Days with a transition are cached per 15 minutes; most
+// transitions fall on quarter hours, but not all (e.g. St. John's before 2011), so a quarter hour is only
+// cached when its ends agree, and otherwise computed exactly.
+const QUARTER_HOUR = 15 * MS_PER_MINUTE;
 const MAX_CACHED_OFFSETS = 50_000;
-const offsetCache = new Map<string, Map<number, number>>();
+/** Per zone: day bucket → offset, or `null` for days with a transition. */
+const dayCache = new Map<string, Map<number, number | null>>();
+const quarterCache = new Map<string, Map<number, number>>();
+
+function cacheFor<V>(caches: Map<string, Map<number, V>>, zone: string): Map<number, V> {
+  let cache = caches.get(zone);
+  if (!cache) caches.set(zone, (cache = new Map<number, V>()));
+  if (cache.size >= MAX_CACHED_OFFSETS) cache.clear();
+  return cache;
+}
 
 /** Offset from UTC in milliseconds at `time` (e.g. +3 600 000 for CET). */
 export function zoneOffset(time: number, zone: TimeZone): number {
   if (zone === 'UTC') return 0;
   if (zone === LOCAL_TIME_ZONE) return -new Date(time).getTimezoneOffset() * MS_PER_MINUTE;
 
-  let cache = offsetCache.get(zone);
-  if (!cache) offsetCache.set(zone, (cache = new Map<number, number>()));
-  const bucket = Math.floor(time / OFFSET_BUCKET);
-  const cached = cache.get(bucket);
-  if (cached !== undefined) return cached;
+  const days = cacheFor(dayCache, zone);
+  const day = Math.floor(time / MS_PER_DAY);
+  let dayOffset = days.get(day);
+  if (dayOffset === undefined) {
+    assertTimeZone(zone);
+    const start = intlOffset(day * MS_PER_DAY, zone);
+    dayOffset = start === intlOffset((day + 1) * MS_PER_DAY - MS_PER_SECOND, zone) ? start : null;
+    days.set(day, dayOffset);
+  }
+  if (dayOffset !== null) return dayOffset;
 
-  assertTimeZone(zone);
-  const start = intlOffset(bucket * OFFSET_BUCKET, zone);
-  const end = intlOffset((bucket + 1) * OFFSET_BUCKET - MS_PER_SECOND, zone);
-  if (start !== end) return intlOffset(time, zone); // a transition inside this bucket
-  if (cache.size >= MAX_CACHED_OFFSETS) cache.clear();
-  cache.set(bucket, start);
+  const quarters = cacheFor(quarterCache, zone);
+  const quarter = Math.floor(time / QUARTER_HOUR);
+  const cached = quarters.get(quarter);
+  if (cached !== undefined) return cached;
+  const start = intlOffset(quarter * QUARTER_HOUR, zone);
+  const end = intlOffset((quarter + 1) * QUARTER_HOUR - MS_PER_SECOND, zone);
+  if (start !== end) return intlOffset(time, zone); // the transition is inside this quarter hour
+  quarters.set(quarter, start);
   return start;
 }
 
