@@ -3,6 +3,7 @@ import type { DateInput, Id, Patch, ProjectData, ProjectInput, ProjectState } fr
 import type { ViewPreset } from '../timeaxis/presets';
 import type { HeaderCell, TimeAxis } from '../timeaxis/timeAxis';
 import type { ColumnInput, ColumnsState } from './columns';
+import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 
 /**
@@ -35,8 +36,19 @@ export interface ViewState {
   readonly header: HeaderState;
   /** Columns of the task list on the left. */
   readonly columns: ColumnsState;
-  /** Visible task rows (virtualized), in tree order. */
+  /** Visible task rows (virtualized), in tree order, with their bars. */
   readonly rows: RowsState;
+  /** Where "now" is on the timeline, or `null` when outside it (or turned off). */
+  readonly today: TodayLine | null;
+  /** Non-working time to shade, around the visible part of the timeline. */
+  readonly nonWorkingTime: readonly TimeSpan[];
+}
+
+export interface TodayLine {
+  /** When the line was placed; it only moves once it reaches the next pixel. */
+  readonly time: number;
+  /** Whole pixels. */
+  readonly x: number;
 }
 
 export interface GanttDataChange {
@@ -73,6 +85,13 @@ export interface GanttOptions {
   rowHeight?: number | undefined;
   /** Height of each header row in pixels. Default 28. */
   headerRowHeight?: number | undefined;
+  /** Show a line at the current time. Default `true`. */
+  showToday?: boolean | undefined;
+  /**
+   * Shade non-working time from the project calendar. Default `true`. With ticks under a day, every non-working
+   * interval is shaded; with day ticks, whole non-working days; with longer ticks, nothing.
+   */
+  showNonWorkingTime?: boolean | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,

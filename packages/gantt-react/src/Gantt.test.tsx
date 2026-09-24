@@ -2,16 +2,22 @@ import type { GanttController, ProjectData, ProjectInput } from '@quartzio/gantt
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { renderToString } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Gantt } from './Gantt';
 
 const data: ProjectInput = { tasks: [{ id: 1 }, { id: 2 }] };
 const rowCount = (container: HTMLElement) => container.querySelectorAll('.qz-grid__row').length;
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('<Gantt />', () => {
   it('renders the root element with custom class names', () => {
     const { container } = render(<Gantt className="custom" />);
-    expect(container.firstElementChild?.className).toBe('qz-gantt custom');
+    const root = container.firstElementChild;
+    expect(root?.classList.contains('qz-gantt')).toBe(true);
+    expect(root?.classList.contains('custom')).toBe(true);
   });
 
   it('shows an empty state when there are no tasks', () => {
@@ -143,23 +149,63 @@ describe('<Gantt />', () => {
     expect(container.querySelector('.qz-header__row:last-child .qz-header__cell')?.textContent).toBe('Q1');
   });
 
-  it('reports scrolling to the engine', () => {
+  it('reports scrolling to the engine, and keeps the scrollbars and the task list header in step', () => {
     const ref = createRef<GanttController>();
     const { container } = render(<Gantt ref={ref} defaultData={data} />);
-    const timeline = container.querySelector('.qz-timeline__scroller') as HTMLElement;
-    timeline.scrollLeft = 250;
-    timeline.scrollTop = 40;
-    fireEvent.scroll(timeline);
+    const find = (selector: string) => container.querySelector(selector) as HTMLElement;
+    // One scroll area holds the headers, the task list and the timeline, so they can't scroll out of step.
+    const scroller = find('.qz-gantt__scroller');
+    for (const part of ['.qz-list__header', '.qz-timeline__header', '.qz-list__body', '.qz-timeline__body']) {
+      expect(scroller.contains(find(part))).toBe(true);
+    }
+    scroller.scrollLeft = 250;
+    scroller.scrollTop = 40;
+    fireEvent.scroll(scroller);
     expect(ref.current?.getState().viewport).toMatchObject({ scrollLeft: 250, scrollTop: 40 });
-    // The timeline header (outside the scroll area) follows the horizontal scroll.
-    expect((container.querySelector('.qz-timeline__header') as HTMLElement).scrollLeft).toBe(250);
-    // The task list follows the timeline's vertical scroll...
-    const list = container.querySelector('.qz-list__body') as HTMLElement;
-    expect(list.scrollTop).toBe(40);
-    // ...and scrolling the list (e.g. with the wheel) moves the timeline.
-    list.scrollTop = 80;
+    expect(find('.qz-timeline__scrollbar').scrollLeft).toBe(250);
+    expect(find('.qz-gantt__scrollbar-y').scrollTop).toBe(40);
+    // Dragging a scrollbar scrolls the content.
+    const vertical = find('.qz-gantt__scrollbar-y');
+    vertical.scrollTop = 80;
+    fireEvent.scroll(vertical);
+    expect(scroller.scrollTop).toBe(80);
+    // The task list scrolls horizontally on its own; its header and scrollbar follow.
+    const list = find('.qz-list__body');
+    list.scrollLeft = 30;
     fireEvent.scroll(list);
-    expect(timeline.scrollTop).toBe(80);
+    expect(find('.qz-list__header').scrollLeft).toBe(30);
+    expect(find('.qz-list__scrollbar').scrollLeft).toBe(30);
+  });
+
+  it('does not pull the content back when a scrollbar echoes a position the content has already left', () => {
+    const { container } = render(<Gantt defaultData={data} />);
+    const find = (selector: string) => container.querySelector(selector) as HTMLElement;
+    const scroller = find('.qz-gantt__scroller');
+    const list = find('.qz-list__body');
+    // Momentum scrolling: the content moves on every frame, and each scrollbar's scroll event (caused by our own
+    // sync) arrives a frame later, with the previous position.
+    for (const [content, bar, axis] of [
+      [scroller, find('.qz-timeline__scrollbar'), 'scrollLeft'],
+      [scroller, find('.qz-gantt__scrollbar-y'), 'scrollTop'],
+      [list, find('.qz-list__scrollbar'), 'scrollLeft'],
+    ] as const) {
+      content[axis] = 100;
+      fireEvent.scroll(content);
+      expect(bar[axis]).toBe(100);
+      content[axis] = 125;
+      fireEvent.scroll(bar); // the echo of 100
+      expect(content[axis]).toBe(125);
+      fireEvent.scroll(content);
+      expect(bar[axis]).toBe(125);
+      // Dragging the scrollbar itself still scrolls the content, also right after an echo.
+      bar[axis] = 60;
+      fireEvent.scroll(bar);
+      expect(content[axis]).toBe(60);
+      // ...and the content's echo of that doesn't pull the scrollbar back while it's being dragged on.
+      bar[axis] = 40;
+      fireEvent.scroll(content);
+      expect(bar[axis]).toBe(40);
+    }
   });
 
   it('renders tasks 1 and "1" as two rows, with row positions for assistive tech', () => {
@@ -176,5 +222,89 @@ describe('<Gantt />', () => {
     const rows = [...container.querySelectorAll('.qz-grid__row')];
     expect(rows.map((row) => row.getAttribute('aria-rowindex'))).toEqual(['2', '3']);
     expect(container.querySelector('[role="treegrid"]')?.getAttribute('aria-rowcount')).toBe('3');
+  });
+
+  describe('timeline body', () => {
+    // 'weekAndDay': 32 px per day, starting on Monday 5 October.
+    const project: ProjectInput = {
+      settings: { timeZone: 'UTC' },
+      tasks: [
+        {
+          id: 'p',
+          name: 'Phase',
+          children: [
+            { id: 't', name: 'Build', startDate: '2026-10-06', endDate: '2026-10-08', percentDone: 25 },
+          ],
+        },
+        { id: 'm', name: 'Launch', startDate: '2026-10-09' },
+        { id: 'u', name: 'Someday' },
+      ],
+    };
+    const renderChart = (props = {}) =>
+      render(
+        <Gantt
+          defaultData={project}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          {...props}
+        />,
+      );
+    const body = (container: HTMLElement) => container.querySelector('.qz-timeline__body') as HTMLElement;
+
+    it('draws task, summary and milestone bars in rows keyed like the task list, hidden from assistive tech', () => {
+      const { container } = renderChart();
+      expect(body(container).getAttribute('aria-hidden')).toBe('true');
+
+      const rows = [...body(container).querySelectorAll('.qz-timeline__row')];
+      const listKeys = [...container.querySelectorAll('.qz-grid__row')].map((row) =>
+        row.getAttribute('data-key'),
+      );
+      expect(rows.map((row) => row.getAttribute('data-key'))).toEqual(listKeys);
+
+      const task = body(container).querySelector('.qz-bar--task') as HTMLElement;
+      expect(task.style.left).toBe('32px');
+      expect(task.style.width).toBe('64px');
+      expect(task.textContent).toBe('Build');
+      expect((task.querySelector('.qz-bar__progress') as HTMLElement).style.width).toBe('25%');
+
+      expect((body(container).querySelector('.qz-bar--summary') as HTMLElement).style.left).toBe('32px');
+      const milestone = body(container).querySelector('.qz-bar--milestone') as HTMLElement;
+      expect(milestone.style.left).toBe(`${String(4 * 32)}px`);
+      expect(milestone.textContent).toBe('Launch');
+      // The unscheduled task has a row but no bar.
+      expect(body(container).querySelectorAll('.qz-bar')).toHaveLength(3);
+    });
+
+    it('shows the today line and weekend shading, and hides them when turned off', () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.UTC(2026, 9, 6, 12));
+      const { container, rerender } = renderChart();
+      expect((body(container).querySelector('.qz-today') as HTMLElement).style.left).toBe('48px');
+      const shade = body(container).querySelector('.qz-nonworking') as HTMLElement;
+      expect(shade.style.left).toBe(`${String(5 * 32)}px`);
+      expect(shade.style.width).toBe('64px');
+
+      rerender(
+        <Gantt
+          defaultData={project}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          showToday={false}
+          showNonWorkingTime={false}
+        />,
+      );
+      expect(body(container).querySelector('.qz-today')).toBeNull();
+      expect(body(container).querySelector('.qz-nonworking')).toBeNull();
+    });
+
+    it('passes the switches on at creation', () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.UTC(2026, 9, 6, 12));
+      const { container } = renderChart({ showToday: false, showNonWorkingTime: false });
+      expect(body(container).querySelector('.qz-today')).toBeNull();
+      expect(body(container).querySelector('.qz-nonworking')).toBeNull();
+    });
   });
 });

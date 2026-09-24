@@ -73,6 +73,11 @@ body {
   gap: 16px;
 }
 
+/* Grid items default to min-width: auto, so a wide chart inside a wrapper would widen the page. */
+.pg-stack > * {
+  min-width: 0;
+}
+
 .pg-stack h3 {
   margin: 0 0 8px;
   font-size: 14px;

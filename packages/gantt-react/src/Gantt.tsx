@@ -10,9 +10,11 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type WheelEvent,
 } from 'react';
+import { follow, isEcho } from './scrollSync';
 import { TaskListBody, TaskListHeader } from './TaskList';
-import { TimelineHeader } from './Timeline';
+import { TimelineBody, TimelineHeader } from './Timeline';
 
 /**
  * Passing the `data` prop — even as `undefined`, e.g. while loading — makes the chart controlled.
@@ -31,6 +33,7 @@ export interface GanttProps extends GanttOptions {
 export function Gantt(props: GanttProps): ReactElement {
   const { className, ref, data, defaultData, onChange } = props;
   const { preset, startDate, endDate, locale, columns, rowHeight, headerRowHeight } = props;
+  const { showToday, showNonWorkingTime } = props;
   // Key presence, not the value, decides the mode (see GanttProps).
   const controlled = 'data' in props;
 
@@ -47,14 +50,26 @@ export function Gantt(props: GanttProps): ReactElement {
       columns,
       rowHeight,
       headerRowHeight,
+      showToday,
+      showNonWorkingTime,
     }),
   );
   // The third argument makes server rendering work; the server snapshot is the initial state.
   const state = useSyncExternalStore(gantt.subscribe, gantt.getState, gantt.getState);
-  // The timeline body: the scroll area that owns both scrollbars.
-  const timelineRef = useRef<HTMLDivElement>(null);
-  // The timeline header sits above it, outside the scroll area, and follows its horizontal scroll.
-  const timelineHeaderRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // One scroll area for everything, in both directions: the headers are sticky at the top and the task list at
+  // the left, so the browser moves all of it together. (Syncing separate scroll areas from scroll events lags a
+  // frame behind the browser's threaded scrolling, visible as flicker.) Its own scrollbars are hidden: they'd
+  // span the headers and the task list. Separate scrollbars, placed where they belong, follow it instead.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const verticalScrollbarRef = useRef<HTMLDivElement>(null);
+  const timelineScrollbarRef = useRef<HTMLDivElement>(null);
+  // The task list scrolls horizontally on its own when its columns don't fit; its header follows.
+  const listHeaderRef = useRef<HTMLDivElement>(null);
+  const listBodyRef = useRef<HTMLDivElement>(null);
+  const listScrollbarRef = useRef<HTMLDivElement>(null);
+  // CSS decides the task list's width (its columns, up to a max); measured here and copied to the grid.
+  const sizerRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => gantt, [gantt]);
 
@@ -71,6 +86,8 @@ export function Gantt(props: GanttProps): ReactElement {
       columns,
       rowHeight,
       headerRowHeight,
+      showToday,
+      showNonWorkingTime,
     });
   }, [
     gantt,
@@ -84,82 +101,124 @@ export function Gantt(props: GanttProps): ReactElement {
     columns,
     rowHeight,
     headerRowHeight,
+    showToday,
+    showNonWorkingTime,
   ]);
 
   const { timeAxis, header, rows } = state;
   const listWidth = state.columns.totalWidth;
-  const listRef = useRef<HTMLDivElement>(null);
-  const listBodyRef = useRef<HTMLDivElement>(null);
-  // Spacers that even out scrollbars between areas (see measure).
-  const [gaps, setGaps] = useState({ list: 0, timeline: 0, header: 0 });
+  // Measured: the task list's width, the native scrollbar size (0 for overlay scrollbars), and the directions
+  // that scroll.
+  const [layout, setLayout] = useState({ listPane: 0, scrollbar: 0, vertical: false, horizontal: false });
 
   const measure = useCallback(() => {
-    const timeline = timelineRef.current;
-    const list = listRef.current;
-    if (!timeline || !list) return;
-    // The viewport is the timeline's visible body: exactly its scroll area.
-    gantt.setViewport({ width: timeline.clientWidth, height: timeline.clientHeight });
-    // Each side may or may not show a horizontal scrollbar. The side without one (or with a thinner one)
-    // gets a spacer at the bottom, so both can scroll equally far down and rows stay aligned.
-    const timelineScrollbar = timeline.offsetHeight - timeline.clientHeight;
-    const listScrollbar = list.offsetHeight - list.clientHeight;
+    const root = rootRef.current;
+    const scroller = scrollerRef.current;
+    const sizer = sizerRef.current;
+    const listBody = listBodyRef.current;
+    if (!root || !scroller || !sizer || !listBody) return;
+    const listPane = sizer.offsetWidth;
+    // The viewport is the visible part of the timeline's rows: the scroll area minus the task list and the header.
+    gantt.setViewport({
+      width: Math.max(0, scroller.clientWidth - listPane),
+      height: Math.max(0, scroller.clientHeight - gantt.getState().header.height),
+    });
     const next = {
-      list: Math.max(0, timelineScrollbar - listScrollbar),
-      timeline: Math.max(0, listScrollbar - timelineScrollbar),
-      // The header spans the body's vertical scrollbar too, so it gets that much extra width to be able to
-      // scroll as far right as the body.
-      header: timeline.offsetWidth - timeline.clientWidth,
+      listPane,
+      scrollbar: scrollbarSize(root),
+      vertical: scroller.scrollHeight > scroller.clientHeight,
+      horizontal: scroller.scrollWidth > scroller.clientWidth || listBody.scrollWidth > listBody.clientWidth,
     };
-    setGaps((current) =>
-      current.list === next.list && current.timeline === next.timeline && current.header === next.header
+    setLayout((current) =>
+      current.listPane === next.listPane &&
+      current.scrollbar === next.scrollbar &&
+      current.vertical === next.vertical &&
+      current.horizontal === next.horizontal
         ? current
         : next,
     );
   }, [gantt]);
 
   useEffect(() => {
-    const timeline = timelineRef.current;
-    const list = listRef.current;
-    if (!timeline || !list || typeof ResizeObserver === 'undefined') return;
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
-    observer.observe(timeline);
-    observer.observe(list);
+    for (const ref of [rootRef, scrollerRef, sizerRef]) if (ref.current) observer.observe(ref.current);
     return () => {
       observer.disconnect();
     };
   }, [measure]);
 
-  // Header height and content widths decide whether scrollbars appear, so they're part of the measurement.
-  useLayoutEffect(measure, [measure, header.height, timeAxis.totalWidth, listWidth]);
+  // Header height and content sizes decide what scrolls, so they're part of the measurement.
+  useLayoutEffect(measure, [measure, header.height, timeAxis.totalWidth, listWidth, rows.totalHeight]);
 
-  // The timeline owns the vertical scrollbar; the task list follows it (and scrolling the list, e.g. with the
-  // wheel, moves the timeline). Differences under a pixel are rounding, not scrolling.
-  const syncTop = (from: HTMLElement | null, to: HTMLElement | null) => {
-    if (from && to && Math.abs(from.scrollTop - to.scrollTop) >= 1) to.scrollTop = from.scrollTop;
+  // Scrollbars are hidden while there's nothing to scroll; when they appear, start where the content is.
+  useLayoutEffect(() => {
+    follow(scrollerRef.current, 'scrollLeft', timelineScrollbarRef.current);
+    follow(scrollerRef.current, 'scrollTop', verticalScrollbarRef.current);
+    follow(listBodyRef.current, 'scrollLeft', listScrollbarRef.current);
+  }, [layout.horizontal, layout.vertical]);
+
+  // The scrollbars can only scroll in their own direction; pass the other one on to the content.
+  const forwardWheel = (event: WheelEvent) => {
+    scrollerRef.current?.scrollBy(
+      event.currentTarget === verticalScrollbarRef.current ? event.deltaX : 0,
+      event.currentTarget === verticalScrollbarRef.current ? 0 : event.deltaY,
+    );
   };
 
+  const overlay = layout.scrollbar === 0;
+  const classNames = ['qz-gantt'];
+  if (overlay) classNames.push('qz-gantt--overlay-scrollbars');
+  if (layout.vertical) classNames.push('qz-gantt--scroll-y');
+  if (layout.horizontal) classNames.push('qz-gantt--scroll-x');
+  if (className) classNames.push(className);
   const style = {
     ...props.style,
     '--qz-list-width': `${String(listWidth)}px`,
+    ...(layout.listPane > 0 ? { '--qz-list-pane': `${String(layout.listPane)}px` } : {}),
+    '--qz-axis-width': `${String(timeAxis.totalWidth)}px`,
     '--qz-header-height': `${String(header.height)}px`,
     '--qz-tick-width': `${String(timeAxis.tickWidth)}px`,
     '--qz-row-height': `${String(rows.rowHeight)}px`,
-    '--qz-list-gap': `${String(gaps.list)}px`,
-    '--qz-timeline-gap': `${String(gaps.timeline)}px`,
-    '--qz-header-gap': `${String(gaps.header)}px`,
+    '--qz-scrollbar-size': `${String(layout.scrollbar)}px`,
   } as CSSProperties;
 
   return (
-    <div className={className ? `qz-gantt ${className}` : 'qz-gantt'} style={style}>
-      {/* The list scrolls horizontally on its own when its columns don't fit (header and rows together). */}
-      <div ref={listRef} className="qz-list" role="treegrid" aria-rowcount={rows.count + 1}>
-        <div className="qz-list__content">
-          <TaskListHeader columns={state.columns} height={header.height} />
+    <div
+      ref={rootRef}
+      className={classNames.join(' ')}
+      style={style}
+      role="treegrid"
+      aria-rowcount={rows.count + 1}
+    >
+      <div ref={sizerRef} className="qz-gantt__sizer" />
+      <div
+        ref={scrollerRef}
+        className="qz-gantt__scroller"
+        onScroll={(event) => {
+          const scroller = event.currentTarget;
+          gantt.setViewport({ scrollLeft: scroller.scrollLeft, scrollTop: scroller.scrollTop });
+          // Don't sync back what a scrollbar just set (see scrollSync): it may have been dragged on since.
+          if (!isEcho(scroller, 'scrollLeft')) follow(scroller, 'scrollLeft', timelineScrollbarRef.current);
+          if (!isEcho(scroller, 'scrollTop')) follow(scroller, 'scrollTop', verticalScrollbarRef.current);
+        }}
+      >
+        <div className="qz-gantt__content" style={{ height: header.height + rows.totalHeight }}>
+          <div ref={listHeaderRef} className="qz-list__header">
+            <TaskListHeader columns={state.columns} height={header.height} />
+          </div>
+          <div className="qz-timeline__header" aria-hidden="true">
+            <div className="qz-timeline__header-canvas">
+              <TimelineHeader header={header} />
+            </div>
+          </div>
           <div
             ref={listBodyRef}
             className="qz-list__body"
-            onScroll={() => {
-              syncTop(listBodyRef.current, timelineRef.current);
+            onScroll={(event) => {
+              const list = event.currentTarget;
+              follow(list, 'scrollLeft', listHeaderRef.current);
+              if (!isEcho(list, 'scrollLeft')) follow(list, 'scrollLeft', listScrollbarRef.current);
             }}
           >
             <div className="qz-list__canvas" style={{ height: rows.totalHeight }}>
@@ -167,37 +226,62 @@ export function Gantt(props: GanttProps): ReactElement {
             </div>
             {rows.count === 0 && <div className="qz-gantt__empty">No tasks</div>}
           </div>
+          <TimelineBody
+            rows={rows.items}
+            nonWorkingTime={state.nonWorkingTime}
+            today={state.today}
+            width={timeAxis.totalWidth}
+            height={rows.totalHeight}
+          />
         </div>
       </div>
-      <div className="qz-timeline">
+      <div
+        ref={verticalScrollbarRef}
+        className="qz-gantt__scrollbar-y"
+        aria-hidden="true"
+        onScroll={(event) => {
+          if (!isEcho(event.currentTarget, 'scrollTop'))
+            follow(event.currentTarget, 'scrollTop', scrollerRef.current);
+        }}
+        onWheel={forwardWheel}
+      >
+        <div style={{ height: rows.totalHeight }} />
+      </div>
+      <div className="qz-gantt__footer" aria-hidden="true">
         <div
-          ref={timelineHeaderRef}
-          className="qz-timeline__header"
-          // The header can't be scrolled itself; pass wheel and trackpad scrolling on to the body.
-          onWheel={(event) => {
-            timelineRef.current?.scrollBy(event.deltaX, event.deltaY);
+          ref={listScrollbarRef}
+          className="qz-list__scrollbar"
+          onScroll={(event) => {
+            if (!isEcho(event.currentTarget, 'scrollLeft'))
+              follow(event.currentTarget, 'scrollLeft', listBodyRef.current);
           }}
+          onWheel={forwardWheel}
         >
-          <div className="qz-timeline__header-canvas" style={{ width: timeAxis.totalWidth }}>
-            <TimelineHeader header={header} />
-          </div>
+          <div style={{ width: listWidth }} />
         </div>
         <div
-          ref={timelineRef}
-          className="qz-timeline__scroller"
+          ref={timelineScrollbarRef}
+          className="qz-timeline__scrollbar"
           onScroll={(event) => {
-            const { scrollLeft, scrollTop } = event.currentTarget;
-            gantt.setViewport({ scrollLeft, scrollTop });
-            if (timelineHeaderRef.current) timelineHeaderRef.current.scrollLeft = scrollLeft;
-            syncTop(timelineRef.current, listBodyRef.current);
+            if (!isEcho(event.currentTarget, 'scrollLeft'))
+              follow(event.currentTarget, 'scrollLeft', scrollerRef.current);
           }}
+          onWheel={forwardWheel}
         >
-          <div
-            className="qz-timeline__body"
-            style={{ width: timeAxis.totalWidth, height: rows.totalHeight }}
-          />
+          <div style={{ width: timeAxis.totalWidth }} />
         </div>
       </div>
     </div>
   );
+}
+
+/** The native scrollbar thickness, measured inside the chart so page-level scrollbar styles count. */
+function scrollbarSize(root: HTMLElement): number {
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:absolute;top:0;left:0;width:100px;height:100px;overflow:scroll;visibility:hidden';
+  root.appendChild(probe);
+  const size = probe.offsetHeight - probe.clientHeight;
+  probe.remove();
+  return size;
 }

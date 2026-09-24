@@ -76,6 +76,8 @@ export type { EffectiveDates } from './scheduling/effective';
 export { computeEffectiveDates } from './scheduling/effective';
 
 // View
+export type { Bar, BarKind } from './view/bars';
+export type { TimeSpan } from './view/nonWorking';
 export type {
   BuiltInColumnId,
   CellContext,
@@ -92,6 +94,7 @@ export type {
   GanttDataChange,
   GanttOptions,
   HeaderState,
+  TodayLine,
   Viewport,
   ViewState,
 } from './view/types';

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import { BarsDemo } from './bars';
 import { BasicDemo } from './basic';
 import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
@@ -48,5 +49,12 @@ export const demos: Demo[] = [
     description:
       'Rows from the task tree with expand/collapse, configurable columns and virtualized rows. Try 10 000 tasks.',
     Component: TaskListDemo,
+  },
+  {
+    id: 'bars',
+    title: 'Bars',
+    description:
+      'Task bars with progress, summary bars for parents, milestones, the today line and non-working time from the project calendar.',
+    Component: BarsDemo,
   },
 ];

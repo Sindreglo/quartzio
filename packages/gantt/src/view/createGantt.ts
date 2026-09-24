@@ -6,9 +6,11 @@ import { isEqual } from '../util/equal';
 import { QuartzioError } from '../util/errors';
 import { createDataBinding } from './binding';
 import { resolveColumns, type ColumnInput, type ResolvedColumns } from './columns';
+import type { TimeAxis } from '../timeaxis/timeAxis';
+import { createNonWorkingView } from './nonWorking';
 import { createRowsView } from './rows';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
-import type { GanttController, GanttOptions, ViewState, Viewport } from './types';
+import type { GanttController, GanttOptions, TodayLine, ViewState, Viewport } from './types';
 
 export type {
   GanttController,
@@ -30,6 +32,8 @@ interface ViewOptions {
   columns: ResolvedColumns;
   rowHeight: number;
   headerRowHeight: number;
+  showToday: boolean;
+  showNonWorkingTime: boolean;
 }
 
 const VIEW_KEYS = [
@@ -40,7 +44,15 @@ const VIEW_KEYS = [
   'columns',
   'rowHeight',
   'headerRowHeight',
+  'showToday',
+  'showNonWorkingTime',
 ] as const;
+
+function toSwitch(value: unknown, fallback: boolean, name: string): boolean {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== 'boolean') throw new QuartzioError(`Gantt options: "${name}" must be true or false.`);
+  return value;
+}
 
 function toHeight(value: unknown, fallback: number, name: string): number {
   if (value === undefined || value === null) return fallback;
@@ -76,10 +88,18 @@ function resolveViewOptions(options: GanttOptions, previous?: ViewOptions): View
     headerRowHeight: has('headerRowHeight')
       ? toHeight(options.headerRowHeight, DEFAULT_HEADER_ROW_HEIGHT, 'headerRowHeight')
       : (previous?.headerRowHeight ?? DEFAULT_HEADER_ROW_HEIGHT),
+    showToday: has('showToday')
+      ? toSwitch(options.showToday, true, 'showToday')
+      : (previous?.showToday ?? true),
+    showNonWorkingTime: has('showNonWorkingTime')
+      ? toSwitch(options.showNonWorkingTime, true, 'showNonWorkingTime')
+      : (previous?.showNonWorkingTime ?? true),
   };
 }
 
 const sameView = (a: ViewOptions, b: ViewOptions) =>
+  a.showToday === b.showToday &&
+  a.showNonWorkingTime === b.showNonWorkingTime &&
   a.timeline === b.timeline &&
   a.columns === b.columns &&
   a.rowHeight === b.rowHeight &&
@@ -92,12 +112,23 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   const binding = createDataBinding(project, controlled, options.data, options.onChange);
   const timelineView = createTimelineView();
   const rowsView = createRowsView();
+  const nonWorkingView = createNonWorkingView();
   const changes = createEmitter<ViewState>();
   let collapsed: ReadonlySet<Id> = new Set();
   let collapsedVersion = 0;
   let destroyed = false;
   // True while setOptions applies several changes, so they produce one state update instead of several.
   let batching = false;
+
+  let todayCache: { axis: TimeAxis; line: TodayLine } | undefined;
+  const todayOn = (axis: TimeAxis): TodayLine | null => {
+    const now = Date.now();
+    if (!view.showToday || now < axis.start || now >= axis.end) return null;
+    // Whole pixels, and the same object while on the same pixel, so the line doesn't re-render on every update.
+    const x = Math.round(axis.dateToX(now));
+    if (todayCache?.axis !== axis || todayCache.line.x !== x) todayCache = { axis, line: { time: now, x } };
+    return todayCache.line;
+  };
 
   // Deriving never throws: options are validated up front, and oversized ranges are cut short.
   const derive = (viewport: Viewport, projectState: ProjectState): ViewState => {
@@ -116,7 +147,10 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         rowHeight: view.rowHeight,
         columns: view.columns,
         locale: view.timeline.locale,
+        timeAxis,
       }),
+      today: todayOn(timeAxis),
+      nonWorkingTime: nonWorkingView.spansFor(projectState, timeAxis, viewport, view.showNonWorkingTime),
     };
   };
 

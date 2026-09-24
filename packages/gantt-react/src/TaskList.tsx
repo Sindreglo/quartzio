@@ -33,6 +33,7 @@ const TaskRow = memo(function TaskRow({
   return (
     <div
       className="qz-grid__row"
+      data-key={row.key}
       role="row"
       // Rows are virtualized, so tell assistive tech where each one is (the header row is 1).
       aria-rowindex={row.index + 2}

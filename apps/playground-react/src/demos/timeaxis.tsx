@@ -61,8 +61,14 @@ export function TimeAxisDemo() {
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const state = gantt.current?.getState();
-    if (!state) return;
-    const x = event.clientX - event.currentTarget.getBoundingClientRect().left + state.viewport.scrollLeft;
+    // Timeline x = 0 is the left edge of the timeline's rows (which moves with scrolling).
+    const rows = event.currentTarget.querySelector('.qz-timeline__body');
+    if (!state || !rows) return;
+    const x = event.clientX - rows.getBoundingClientRect().left;
+    if (x < 0) {
+      setHovered(null);
+      return;
+    }
     setHovered(format.format(state.timeAxis.xToDate(x)));
   };
 

@@ -12,14 +12,31 @@
   --qz-header-font-size: 12px;
   --qz-cell-padding: 8px;
   --qz-tree-indent: 18px;
+  --qz-bar-color: #6d7cf0;
+  --qz-bar-progress-color: #4f5bd5;
+  --qz-bar-text-color: #ffffff;
+  --qz-bar-radius: 4px;
+  --qz-summary-color: #4b5563;
+  --qz-milestone-color: #0e9384;
+  --qz-milestone-size: 14px;
+  --qz-today-color: #ef4444;
+  --qz-nonworking-color: rgb(15 23 42 / 4%);
 
   position: relative;
-  display: flex;
+  /* The scroll area, the vertical scrollbar to its right and the horizontal scrollbars below it. */
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   overflow: hidden;
   font-family: var(--qz-font-family);
   font-size: var(--qz-font-size);
   color: var(--qz-color-text);
-  background: var(--qz-color-background);
+  /* The header's background continues above the vertical scrollbar. */
+  background: linear-gradient(
+    var(--qz-color-header-background) calc(var(--qz-header-height) - 1px),
+    var(--qz-color-border) 0 var(--qz-header-height),
+    var(--qz-color-background) 0
+  );
   border: 1px solid var(--qz-color-border);
 }
 
@@ -35,43 +52,81 @@
 }
 
 /*
- * Layout: the task list and the timeline side by side, each with its own scroll area. The timeline owns
- * both scrollbars (so the horizontal one only spans the timeline); the task list follows its vertical scroll
- * with its own scrollbar hidden. Sizes come from the engine through custom properties on .qz-gantt.
+ * Layout: one scroll area for everything, so the browser scrolls the headers, the task list and the timeline
+ * together, without any frame of lag. Inside it, a grid: the headers are sticky at the top and the task list at
+ * the left, with the timeline scrolling underneath. Its own scrollbars are hidden (they'd span the headers and
+ * the task list); separate scrollbars, to the right of the rows and below each side, follow it. Sizes come from
+ * the engine and from measuring, through custom properties on .qz-gantt.
  */
 
-.qz-list {
-  flex: none;
-  /*
-   * As wide as its columns plus its 1px right border (so the columns fit exactly and there is no scrollbar),
-   * but never more than the max; narrower lists scroll horizontally.
-   */
+/*
+ * The task list's width: as wide as its columns plus its 1px right border (so the columns fit exactly and
+ * there is no scrollbar), but never more than the max; narrower lists scroll horizontally. Measured here, as a
+ * percentage of the whole chart, and copied into --qz-list-pane.
+ */
+.qz-gantt__sizer {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: min(calc(var(--qz-list-width) + 1px), var(--qz-list-max-width, 60%));
-  min-height: 0;
-  overflow: auto hidden;
+  height: 0;
+  visibility: hidden;
+}
+
+.qz-gantt__scroller {
+  grid-area: 1 / 1;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.qz-gantt__scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.qz-gantt__content {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--qz-header-height) 1fr;
+  grid-template-columns: var(--qz-list-pane, calc(var(--qz-list-width) + 1px)) var(--qz-axis-width);
+  width: max-content;
+  min-height: 100%;
+}
+
+.qz-list__header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  overflow: hidden;
+  background: var(--qz-color-header-background);
   border-right: 1px solid var(--qz-color-border);
+  border-bottom: 1px solid var(--qz-color-border);
 }
 
-.qz-list__content {
-  display: flex;
-  flex-direction: column;
-  width: var(--qz-list-width);
-  min-width: 100%;
-  height: 100%;
-}
-
-.qz-list .qz-grid__header {
-  flex: none;
+.qz-timeline__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* clip, not hidden: hidden would make the header a scroll area, and its sticky labels would stop sticking. */
+  overflow: clip;
   background: var(--qz-color-header-background);
   border-bottom: 1px solid var(--qz-color-border);
 }
 
-.qz-list__body {
+.qz-timeline__header-canvas {
   position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden scroll;
+  height: 100%;
+}
+
+.qz-list__body {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  /* Horizontal only: vertical wheel and trackpad scrolling passes through to the scroll area. */
+  overflow: auto hidden;
   scrollbar-width: none;
+  background: var(--qz-color-background);
+  border-right: 1px solid var(--qz-color-border);
 }
 
 .qz-list__body::-webkit-scrollbar {
@@ -80,47 +135,14 @@
 
 .qz-list__canvas {
   position: relative;
-  box-sizing: content-box;
-  /* Evens out the horizontal scrollbars, so both sides can scroll equally far down. */
-  padding-bottom: var(--qz-list-gap, 0);
-}
-
-.qz-timeline {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* Outside the scroll area, so the vertical scrollbar only spans the rows; follows horizontal scrolling. */
-.qz-timeline__header {
-  flex: none;
-  height: var(--qz-header-height);
-  overflow: hidden;
-  background: var(--qz-color-header-background);
-  border-bottom: 1px solid var(--qz-color-border);
-}
-
-.qz-timeline__header-canvas {
-  position: relative;
-  box-sizing: content-box;
-  height: 100%;
-  /* Room for the body's vertical scrollbar, so the header can scroll as far right as the body. */
-  padding-right: var(--qz-header-gap, 0);
-}
-
-.qz-timeline__scroller {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  width: var(--qz-list-width);
+  min-width: 100%;
 }
 
 .qz-timeline__body {
   position: relative;
-  box-sizing: content-box;
-  padding-bottom: var(--qz-timeline-gap, 0);
+  /* Bars beyond the axis must not widen the scroll area. */
+  overflow: clip;
   /* One vertical line per tick and one horizontal line per row. */
   background-image:
     linear-gradient(to right, var(--qz-color-grid-line) 1px, transparent 1px),
@@ -129,6 +151,76 @@
   background-size:
     var(--qz-tick-width) var(--qz-row-height),
     var(--qz-tick-width) var(--qz-row-height);
+}
+
+/* --- Scrollbars (shown only while there is something to scroll) --- */
+
+.qz-gantt__scrollbar-y {
+  display: none;
+  grid-area: 1 / 2;
+  width: var(--qz-scrollbar-size);
+  margin-top: var(--qz-header-height);
+  overflow: hidden auto;
+}
+
+.qz-gantt__footer {
+  display: none;
+  grid-area: 2 / 1;
+  height: var(--qz-scrollbar-size);
+}
+
+.qz-gantt--scroll-y .qz-gantt__scrollbar-y {
+  display: block;
+}
+
+.qz-gantt--scroll-x .qz-gantt__footer {
+  display: flex;
+}
+
+.qz-list__scrollbar {
+  flex: none;
+  width: var(--qz-list-pane, calc(var(--qz-list-width) + 1px));
+  overflow: auto hidden;
+  border-right: 1px solid var(--qz-color-border);
+}
+
+.qz-timeline__scrollbar {
+  flex: 1;
+  min-width: 0;
+  overflow: auto hidden;
+}
+
+.qz-list__scrollbar > div,
+.qz-timeline__scrollbar > div {
+  height: 1px;
+}
+
+.qz-gantt__scrollbar-y > div {
+  width: 1px;
+}
+
+/* Overlay scrollbars (e.g. macOS with a trackpad) take no room: they float over the edges of the rows. */
+.qz-gantt--overlay-scrollbars .qz-gantt__scrollbar-y {
+  position: absolute;
+  top: var(--qz-header-height);
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: var(--qz-overlay-scrollbar-size, 12px);
+  margin: 0;
+}
+
+.qz-gantt--overlay-scrollbars .qz-gantt__footer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 4;
+  height: var(--qz-overlay-scrollbar-size, 12px);
+}
+
+.qz-gantt--overlay-scrollbars .qz-list__scrollbar {
+  border-right-color: transparent;
 }
 
 /* --- Task list --- */
@@ -280,7 +372,8 @@
  */
 .qz-header__row:not(:last-child) .qz-header__label {
   position: sticky;
-  left: 0;
+  /* The task list covers the left of the scroll area, so labels stick to its right edge. */
+  left: var(--qz-list-pane, 0);
 }
 
 .qz-header__label {
@@ -289,4 +382,118 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* --- Timeline body: layers, rows and bars --- */
+
+.qz-timeline__layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.qz-nonworking {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--qz-nonworking-color);
+}
+
+.qz-timeline__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.qz-bar {
+  position: absolute;
+  top: 22%;
+  display: flex;
+  align-items: center;
+  height: 56%;
+  overflow: hidden;
+  color: var(--qz-bar-text-color);
+  background: var(--qz-bar-color);
+  border-radius: var(--qz-bar-radius);
+}
+
+.qz-bar__progress {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--qz-bar-progress-color);
+}
+
+.qz-bar__label {
+  position: relative;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Summary bars: a thin bar with downward points at both ends, spanning the children. */
+.qz-bar--summary {
+  top: 34%;
+  height: 7px;
+  overflow: visible;
+  background: var(--qz-summary-color);
+  border-radius: 0;
+}
+
+.qz-bar--summary::before,
+.qz-bar--summary::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  border-top: 6px solid var(--qz-summary-color);
+}
+
+.qz-bar--summary::before {
+  left: 0;
+  border-right: 6px solid transparent;
+}
+
+.qz-bar--summary::after {
+  right: 0;
+  border-left: 6px solid transparent;
+}
+
+/* Milestones: a diamond centered on the date, with the name beside it. */
+.qz-bar--milestone {
+  top: calc(50% - var(--qz-milestone-size) / 2);
+  width: var(--qz-milestone-size);
+  height: var(--qz-milestone-size);
+  margin-left: calc(var(--qz-milestone-size) / -2);
+  overflow: visible;
+  color: var(--qz-color-text);
+  background: none;
+}
+
+.qz-bar--milestone::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--qz-milestone-color);
+  transform: rotate(45deg);
+}
+
+.qz-bar--milestone .qz-bar__label {
+  position: absolute;
+  left: calc(var(--qz-milestone-size) + 4px);
+  padding: 0;
+}
+
+.qz-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  background: var(--qz-today-color);
 }
