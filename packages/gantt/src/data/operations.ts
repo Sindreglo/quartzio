@@ -29,6 +29,10 @@ export function applyOperation(draft: Draft, op: Operation): Operation {
   if (!STORES.includes(op.store)) throw new QuartzioError(`Unknown store "${op.store}" in operation.`);
   const table = draft.write(op.store) as unknown as DraftTable<AnyRecord>;
   const store: StoreName = op.store;
+  if (op.type === 'update' && (typeof op.changes !== 'object' || (op.changes as unknown) === null)) {
+    throw new QuartzioError(`Cannot update ${store} "${String(op.id)}": "changes" must be an object.`);
+  }
+  if (op.type !== 'update' || 'parentId' in op.changes) draft.markStructure(store);
 
   switch (op.type) {
     case 'add': {

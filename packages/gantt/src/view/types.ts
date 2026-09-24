@@ -69,7 +69,11 @@ export interface GanttOptions {
   /** Initial data for uncontrolled usage, where the engine keeps the edited data itself. */
   defaultData?: ProjectInput | undefined;
   onChange?: ((change: GanttDataChange) => void) | undefined;
-  /** A built-in preset id (`'hourAndDay'` … `'manyYears'`, default `'weekAndDay'`) or a custom preset. */
+  /**
+   * A built-in preset id (`'hourAndDay'` … `'manyYears'`, default `'weekAndDay'`) or a custom preset. Custom
+   * presets are compared by value, but a label function is compared by identity: define custom presets outside
+   * render (or memoize them), or an inline function makes every render a change that rebuilds the time axis.
+   */
   preset?: string | ViewPreset | undefined;
   /**
    * The timeline range. Defaults to the tasks' dates with a little padding. Strings without an offset are

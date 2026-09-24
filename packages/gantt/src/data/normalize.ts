@@ -3,6 +3,7 @@ import { QuartzioError } from '../util/errors';
 import { parseCivilDate, parseDateString, parseTimeOfDay } from '../util/parse';
 import { isTimeUnit, type TimeUnit } from '../util/time';
 import { assertTimeZone, type TimeZone } from '../util/zone';
+import { shareTreeIndex } from './tree';
 import type {
   Calendar,
   CalendarException,
@@ -401,6 +402,21 @@ function reuse<R>(record: R, ...candidates: unknown[]): R {
   return record;
 }
 
+/**
+ * Whether two task tables have the same order and parents, so the new one can share the tree index. Checked
+ * after reuseTable, for controlled data coming back with field changes only (the common case).
+ */
+function sameTaskStructure(table: Table<Task>, previous: Table<Task>): boolean {
+  if (previous.order.length !== table.order.length) return false;
+  for (let i = 0; i < table.order.length; i++) {
+    const id = table.order[i] as Id;
+    if (previous.order[i] !== id || previous.byId.get(id)?.parentId !== table.byId.get(id)?.parentId) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** The previous table when order and every record are unchanged, so downstream caches keep hitting. */
 function reuseTable<R extends { readonly id: Id }>(
   table: Table<R>,
@@ -489,10 +505,13 @@ export function createProjectState(input: ProjectInput = {}, previous?: ProjectS
     dependencyOrder.push(dependency.id);
   }
 
+  const taskTable = reuseTable({ byId: tasks, order: taskOrder }, previous?.tasks);
+  if (previous && sameTaskStructure(taskTable, previous.tasks)) shareTreeIndex(previous.tasks, taskTable);
+
   return {
     settings,
     calendars: reuseTable({ byId: calendars, order: calendarOrder }, previous?.calendars),
-    tasks: reuseTable({ byId: tasks, order: taskOrder }, previous?.tasks),
+    tasks: taskTable,
     dependencies: reuseTable({ byId: dependencies, order: dependencyOrder }, previous?.dependencies),
   };
 }

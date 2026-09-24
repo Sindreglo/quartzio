@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { QuartzioError } from '../util/errors';
 import { createProject } from './project';
 import { applyPatch, toProjectData } from './serialize';
 import { getTreeIndex } from './tree';
@@ -87,6 +88,17 @@ describe('patches', () => {
     expect(final.dependencies).toEqual([]);
     expect(final.calendars).toEqual([]);
     expect(final.settings.timeZone).toBe('local');
+  });
+
+  it('reject an update without a changes object, also for unknown ids, and change nothing', () => {
+    const project = createProject({ tasks: [{ id: 1 }] });
+    const state = project.getState();
+    for (const id of [1, 'unknown']) {
+      expect(() => project.apply([{ type: 'update', store: 'tasks', id, changes: null as never }])).toThrow(
+        QuartzioError,
+      );
+    }
+    expect(project.getState()).toBe(state);
   });
 
   it('are JSON-serializable', () => {

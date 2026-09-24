@@ -1,3 +1,4 @@
+import { shareTreeIndex } from './tree';
 import type { Id, ProjectSettings, ProjectState, StoreName, StoreRecords, Table } from './types';
 
 export interface DraftTable<R extends { readonly id: Id }> {
@@ -13,6 +14,7 @@ export class Draft {
   private readonly base: ProjectState;
   private readonly writable = new Map<StoreName, DraftTable<{ readonly id: Id }>>();
   private readonly version = new Map<StoreName, number>();
+  private readonly structureVersion = new Map<StoreName, number>();
   private settings: ProjectSettings | undefined;
 
   constructor(base: ProjectState) {
@@ -48,12 +50,24 @@ export class Draft {
     return this.version.get(store) ?? 0;
   }
 
+  /** Records a change to the store's structure: records added, removed or moved, or a task's parent. */
+  markStructure(store: StoreName): void {
+    this.structureVersion.set(store, (this.structureVersion.get(store) ?? 0) + 1);
+  }
+
+  /** Increments on every structural change (see markStructure), e.g. to cache the task tree. */
+  structureVersionOf(store: StoreName): number {
+    return this.structureVersion.get(store) ?? 0;
+  }
+
   finish(): ProjectState {
     if (this.writable.size === 0 && this.settings === undefined) return this.base;
+    const tasks = this.read('tasks');
+    if (this.structureVersionOf('tasks') === 0) shareTreeIndex(this.base.tasks, tasks);
     return {
       settings: this.readSettings(),
       calendars: this.read('calendars'),
-      tasks: this.read('tasks'),
+      tasks,
       dependencies: this.read('dependencies'),
     };
   }

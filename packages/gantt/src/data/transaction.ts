@@ -19,7 +19,7 @@ import {
   type TaskFieldsInput,
 } from './normalize';
 import { applyOperation } from './operations';
-import { buildTreeIndex, type TreeIndex } from './tree';
+import { buildDraftTreeIndex, type DraftTreeIndex } from './tree';
 import type {
   Calendar,
   Dependency,
@@ -122,8 +122,18 @@ export interface TransactionRecorder {
   close: () => void;
 }
 
-const clampIndex = (index: number | undefined, length: number): number =>
-  index === undefined ? length : Math.max(0, Math.min(Math.trunc(index), length));
+const clampIndex = (index: number | undefined, length: number): number => {
+  if (index === undefined) return length;
+  // NaN can't be clamped to anything meaningful (and would put a task in different places in the tree and in
+  // `order`); out-of-range numbers, including ±Infinity, are clamped.
+  if (typeof index !== 'number' || Number.isNaN(index)) {
+    throw new QuartzioError(`Position index must be a number, got ${String(index)}.`);
+  }
+  return Math.max(0, Math.min(Math.trunc(index), length));
+};
+
+// Subtree size from which placementFor looks up positions through a map instead of scanning `order`.
+const MAP_ABOVE = 8;
 
 /** Creates a transaction that applies every change to `draft` immediately and records the operations. */
 export function createTransaction(draft: Draft, generateId: IdGenerator): TransactionRecorder {
@@ -175,10 +185,11 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
     return id;
   };
 
-  let tree: { version: number; index: TreeIndex } | undefined;
-  const treeIndex = (): TreeIndex => {
-    const version = draft.versionOf('tasks');
-    if (tree?.version !== version) tree = { version, index: buildTreeIndex(tasks()) };
+  // Rebuilt only after structural changes other than adds, which are inserted in place (see add).
+  let tree: { version: number; index: DraftTreeIndex } | undefined;
+  const treeIndex = (): DraftTreeIndex => {
+    const version = draft.structureVersionOf('tasks');
+    if (tree?.version !== version) tree = { version, index: buildDraftTreeIndex(tasks()) };
     return tree.index;
   };
 
@@ -199,31 +210,39 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
   };
 
   /**
-   * Index in `order` that puts a task at `index` among the children of `parentId`.
-   * With `moving`, positions are counted as if that task were already taken out (move semantics).
+   * Where a task goes to be at `index` among the children of `parentId`: its index in `order`, and among its
+   * siblings. With `moving`, positions are counted as if that task were already taken out (move semantics).
    */
-  const orderIndexFor = (parentId: Id | null, index: number | undefined, moving?: Id): number => {
+  const placementFor = (
+    parentId: Id | null,
+    index: number | undefined,
+    moving?: Id,
+  ): { orderIndex: number; siblingIndex: number } => {
     const tree = treeIndex();
-    const movingPosition = moving === undefined ? -1 : tree.position(moving);
-    const position = (id: Id): number => {
-      const p = tree.position(id);
-      return movingPosition !== -1 && p > movingPosition ? p - 1 : p;
-    };
+    // Positions come straight from `order`: it changes with every add, so a position map would need
+    // rebuilding each time. Large subtrees get a map for their one lookup below.
+    const order = tasks().order;
+    const movingPosition = moving === undefined ? -1 : order.indexOf(moving);
+    const adjust = (p: number): number => (movingPosition !== -1 && p > movingPosition ? p - 1 : p);
 
-    const siblings = tree.children(parentId).filter((id) => id !== moving);
-    const target = clampIndex(index, siblings.length);
-    const before = siblings[target];
-    if (before !== undefined) return position(before);
+    const all = tree.childrenView(parentId);
+    const siblings = moving === undefined ? all : all.filter((id) => id !== moving);
+    const siblingIndex = clampIndex(index, siblings.length);
+    const before = siblings[siblingIndex];
+    if (before !== undefined) return { orderIndex: adjust(order.indexOf(before)), siblingIndex };
 
     const last = siblings[siblings.length - 1];
     if (last !== undefined) {
+      const subtree = tree.descendants(last);
+      // One scan per descendant is cheaper than a map for small subtrees, the common case when adding.
+      const positions = subtree.length > MAP_ABOVE ? new Map(order.map((id, i) => [id, i])) : undefined;
       // A loop, not Math.max(...spread): large subtrees would overflow the call stack.
-      let end = position(last);
-      for (const id of tree.descendants(last)) end = Math.max(end, position(id));
-      return end + 1;
+      let end = order.lastIndexOf(last); // appends usually go after the last task: search from the end
+      for (const id of subtree) end = Math.max(end, positions?.get(id) ?? order.indexOf(id));
+      return { orderIndex: adjust(end) + 1, siblingIndex };
     }
-    if (parentId !== null) return position(parentId) + 1;
-    return tasks().order.length - (movingPosition === -1 ? 0 : 1);
+    if (parentId !== null) return { orderIndex: adjust(order.indexOf(parentId)) + 1, siblingIndex };
+    return { orderIndex: order.length - (movingPosition === -1 ? 0 : 1), siblingIndex };
   };
 
   const changedFields = <R extends object>(record: R, changes: Partial<R>): Partial<R> => {
@@ -247,7 +266,13 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       const parentId = position.parentId ?? null;
       requireParent(parentId);
       const record: Task = { id, parentId, ...normalizeTaskFields(fields, owner, settings().timeZone) };
-      apply({ type: 'add', store: 'tasks', record, index: orderIndexFor(parentId, position.index) });
+      const { orderIndex, siblingIndex } = placementFor(parentId, position.index);
+      apply({ type: 'add', store: 'tasks', record, index: orderIndex });
+      // placementFor brought the tree up to date; insert instead of rebuilding it for the next add.
+      if (tree) {
+        tree.index.insert(id, parentId, siblingIndex);
+        tree.version = draft.structureVersionOf('tasks');
+      }
       touchedTasks.add(id);
       return record;
     },
@@ -268,8 +293,9 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       assertNoParentCycle(tasks().byId, id, parentId);
 
       if (parentId !== task.parentId) apply({ type: 'update', store: 'tasks', id, changes: { parentId } });
-      const index = orderIndexFor(parentId, position.index, id);
-      if (index !== treeIndex().position(id)) apply({ type: 'move', store: 'tasks', id, index });
+      const { orderIndex } = placementFor(parentId, position.index, id);
+      if (orderIndex !== tasks().order.indexOf(id))
+        apply({ type: 'move', store: 'tasks', id, index: orderIndex });
     },
 
     remove(id) {

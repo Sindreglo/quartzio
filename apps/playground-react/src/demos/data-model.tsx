@@ -38,12 +38,16 @@ export function DataModelDemo() {
   );
   const taskById = useMemo(() => new Map(data.tasks.map((task) => [task.id, task])), [data]);
 
-  const edit = (fn: (tx: Transaction) => void) => {
+  // Returns whether the edit went through. Side effects (like selecting) belong after it, not inside the
+  // transaction function, which may still fail after running.
+  const edit = (fn: (tx: Transaction) => void): boolean => {
     setError(null);
     try {
       gantt.current?.transact(fn);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     }
   };
 
@@ -104,21 +108,23 @@ export function DataModelDemo() {
     },
     remove: (id: Id, tx: Transaction) => {
       tx.tasks.remove(id);
-      setSelected(null);
     },
   };
 
   const runOnSelected = (action: (id: Id, tx: Transaction) => void) => {
     if (selected === null) return;
-    edit((tx) => {
+    const done = edit((tx) => {
       action(selected, tx);
     });
+    if (done && action === taskActions.remove) setSelected(null);
   };
 
   const addTask = () => {
-    edit((tx) => {
-      setSelected(tx.tasks.add({ name: 'New task' }).id);
+    let added: Id | undefined;
+    const done = edit((tx) => {
+      added = tx.tasks.add({ name: 'New task' }).id;
     });
+    if (done && added !== undefined) setSelected(added);
   };
 
   const taskButtons: [label: string, action: (id: Id, tx: Transaction) => void][] = [

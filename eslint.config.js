@@ -9,7 +9,8 @@ const ENGINE = 'packages/gantt/src';
 const TS_FILES = ['**/*.{ts,tsx}'];
 const TESTS = ['**/*.test.{ts,tsx}'];
 
-// Engine layers, lowest first. A layer may only import from itself or layers below it (ADR 0002).
+// Engine layers, lowest first. A layer may only import from itself or layers below it, so lower layers (data,
+// calendar, scheduling) never learn about pixels, viewports or interaction.
 const LAYERS = ['util', 'data', 'calendar', 'scheduling', 'timeaxis', 'view', 'features'];
 
 const TIME_ZONE_MESSAGE =
@@ -26,7 +27,7 @@ const TIME_ZONE_SENSITIVE = [
 
 const NO_RUNTIME_DEPS = {
   regex: '^[^.]',
-  message: 'The engine has no runtime dependencies. Adding one requires an ADR.',
+  message: 'The engine has no runtime dependencies: dates, scheduling and layout are written in-house.',
 };
 const NO_RUNTIME_DEPS_IN_TESTS = { ...NO_RUNTIME_DEPS, regex: '^(?!\\.|vitest$)' };
 
