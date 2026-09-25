@@ -217,6 +217,50 @@ describe('start, end and duration', () => {
   });
 });
 
+describe('"start no earlier than" constraints', () => {
+  const snet = (date: string) => ({ constraintType: 'startnoearlierthan' as const, constraintDate: date });
+
+  it('hold an automatic task back until the constraint date, at the next working time', () => {
+    const project = scheduled({ ...start, tasks: [days('a', 1, snet('2026-10-07'))] });
+    expect(span(project, 'a')).toBe('10-07 08:00 → 10-07 16:00');
+  });
+
+  it('still let predecessors push the task later', () => {
+    const project = scheduled({
+      ...start,
+      tasks: [days('p', 4), days('a', 1, snet('2026-10-06'))],
+      dependencies: [link('p', 'a')],
+    });
+    expect(span(project, 'a')).toBe('10-09 08:00 → 10-09 16:00');
+  });
+
+  it('apply to all descendants of a parent, and are ignored by manually scheduled tasks', () => {
+    const project = scheduled({
+      ...start,
+      tasks: [
+        { id: 'g', ...snet('2026-10-08'), children: [days('c', 1), days('d', 2)] },
+        days('m', 1, { manuallyScheduled: true, startDate: '2026-10-05T08:00', ...snet('2026-10-12') }),
+      ],
+    });
+    expect(span(project, 'c')).toBe('10-08 08:00 → 10-08 16:00');
+    expect(span(project, 'g')).toBe('10-08 08:00 → 10-09 16:00');
+    expect(span(project, 'm')).toBe('10-05 08:00 → 10-05 16:00');
+  });
+
+  it('move the task when set in a transaction, and let it go back when removed', () => {
+    const project = scheduled({ ...start, tasks: [days('a', 1)] });
+    project.transact((tx) => {
+      tx.tasks.update('a', snet('2026-10-12'));
+    });
+    expect(span(project, 'a')).toBe('10-12 08:00 → 10-12 16:00');
+    project.transact((tx) => {
+      tx.tasks.update('a', { constraintType: null, constraintDate: null });
+    });
+    expect(span(project, 'a')).toBe('10-05 08:00 → 10-05 16:00');
+    expect(scheduleProject(project.getState(), null)).toEqual([]);
+  });
+});
+
 describe('manually scheduled tasks', () => {
   it('keep their own dates, are not pushed by predecessors, and still push successors', () => {
     const project = scheduled({
@@ -576,6 +620,12 @@ describe('fuzzing edits', () => {
               : null,
           endDate: manual && random() < 0.4 ? Date.UTC(2026, 9, 22 + Math.floor(random() * 5), 10) : null,
           percentDone: Math.floor(random() * 101),
+          ...(random() < 0.2
+            ? {
+                constraintType: 'startnoearlierthan' as const,
+                constraintDate: Date.UTC(2026, 9, 3 + Math.floor(random() * 20), 9),
+              }
+            : {}),
         };
       });
       const dependencies: DependencyInput[] = [];
@@ -616,8 +666,18 @@ describe('fuzzing edits', () => {
           patch = project.transact((tx) => {
             const roll = random();
             if (roll < 0.3) tx.tasks.update(id, { duration: Math.round(random() * 30) / 4 });
-            else if (roll < 0.45) tx.tasks.update(id, { manuallyScheduled: random() < 0.5 });
-            else if (roll < 0.6) tx.settings.update({ hoursPerDay: pick([6, 7.5, 8]) });
+            else if (roll < 0.38) tx.tasks.update(id, { manuallyScheduled: random() < 0.5 });
+            else if (roll < 0.45) {
+              tx.tasks.update(
+                id,
+                random() < 0.6
+                  ? {
+                      constraintType: 'startnoearlierthan',
+                      constraintDate: Date.UTC(2026, 9, 1 + Math.floor(random() * 25), 10),
+                    }
+                  : { constraintType: null, constraintDate: null },
+              );
+            } else if (roll < 0.6) tx.settings.update({ hoursPerDay: pick([6, 7.5, 8]) });
             else if (roll < 0.7) tx.tasks.remove(id);
             else if (roll < 0.85) {
               const task = tx.tasks.get(id);

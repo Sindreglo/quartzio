@@ -9,6 +9,12 @@ import { createDataBinding } from './binding';
 import { resolveColumns, type ColumnInput, type ResolvedColumns } from './columns';
 import type { TimeAxis } from '../timeaxis/timeAxis';
 import { createDependencyView } from './dependencies';
+import {
+  createInteraction,
+  type Interaction,
+  type InteractionView,
+  type TaskInteraction,
+} from './interaction';
 import { createNonWorkingView } from './nonWorking';
 import { createRowsView } from './rows';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
@@ -36,6 +42,8 @@ interface ViewOptions {
   headerRowHeight: number;
   showToday: boolean;
   showNonWorkingTime: boolean;
+  taskDrag: boolean;
+  taskResize: boolean;
 }
 
 const VIEW_KEYS = [
@@ -48,6 +56,8 @@ const VIEW_KEYS = [
   'headerRowHeight',
   'showToday',
   'showNonWorkingTime',
+  'taskDrag',
+  'taskResize',
 ] as const;
 
 function toSwitch(value: unknown, fallback: boolean, name: string): boolean {
@@ -96,10 +106,16 @@ function resolveViewOptions(options: GanttOptions, previous?: ViewOptions): View
     showNonWorkingTime: has('showNonWorkingTime')
       ? toSwitch(options.showNonWorkingTime, true, 'showNonWorkingTime')
       : (previous?.showNonWorkingTime ?? true),
+    taskDrag: has('taskDrag') ? toSwitch(options.taskDrag, true, 'taskDrag') : (previous?.taskDrag ?? true),
+    taskResize: has('taskResize')
+      ? toSwitch(options.taskResize, true, 'taskResize')
+      : (previous?.taskResize ?? true),
   };
 }
 
 const sameView = (a: ViewOptions, b: ViewOptions) =>
+  a.taskDrag === b.taskDrag &&
+  a.taskResize === b.taskResize &&
   a.showToday === b.showToday &&
   a.showNonWorkingTime === b.showNonWorkingTime &&
   a.timeline === b.timeline &&
@@ -125,6 +141,12 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   // True while setOptions applies several changes, so they produce one state update instead of several.
   let batching = false;
 
+  // The bar being dragged (a preview), and the task of every visible row (for hit testing).
+  let shownInteraction: TaskInteraction | null = null;
+  let interactionView: InteractionView | undefined;
+  // Created after the first state (it reads the view), so derive can't use it yet on that first call.
+  const interactionRef: { current?: Interaction } = {};
+
   let todayCache: { axis: TimeAxis; line: TodayLine } | undefined;
   const todayOn = (axis: TimeAxis): TodayLine | null => {
     const now = Date.now();
@@ -138,7 +160,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   // Deriving never throws: options are validated up front, and oversized ranges are cut short.
   const derive = (viewport: Viewport, projectState: ProjectState): ViewState => {
     const timeAxis = timelineView.axisFor(projectState, viewport.width, view.timeline);
-    const { rows, rowIndex } = rowsView.rowsFor({
+    const { rows, rowIndex, rowIds } = rowsView.rowsFor({
       project: projectState,
       collapsed,
       collapsedVersion,
@@ -148,7 +170,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       locale: view.timeline.locale,
       timeAxis,
     });
-    return {
+    const next: ViewState = {
       viewport,
       project: projectState,
       timeAxis,
@@ -163,10 +185,46 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       }),
       today: todayOn(timeAxis),
       nonWorkingTime: nonWorkingView.spansFor(projectState, timeAxis, viewport, view.showNonWorkingTime),
+      interaction: shownInteraction,
     };
+    interactionView = {
+      project: projectState,
+      timeAxis,
+      rows,
+      rowIndex,
+      rowIds,
+      locale: view.timeline.locale,
+      drag: view.taskDrag,
+      resize: view.taskResize,
+    };
+    // A drag on a stale basis (another axis, a changed or hidden task, options turned off) is dropped before
+    // anything shows it.
+    if (interactionRef.current && !interactionRef.current.keep(interactionView)) {
+      shownInteraction = null;
+      return { ...next, interaction: null };
+    }
+    return next;
   };
 
   let state = derive(INITIAL_VIEWPORT, project.getState());
+
+  const drags = createInteraction({
+    view: () => interactionView as InteractionView,
+    show(next) {
+      shownInteraction = next;
+      setState({ ...state, interaction: next });
+    },
+    commit(fn) {
+      try {
+        binding.transact(fn);
+      } catch (error) {
+        // Expected: the data rejecting the change (a dependency cycle can't come from a drop, but a date the
+        // data doesn't accept could). Nothing changes and the bar goes back; a pointer handler must not throw.
+        if (!(error instanceof QuartzioError)) throw error;
+      }
+    },
+  });
+  interactionRef.current = drags;
 
   const setState = (next: ViewState): void => {
     state = next;
@@ -248,6 +306,18 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     transact(fn) {
       if (destroyed) return null;
       return binding.transact(fn);
+    },
+
+    hitTest: (point) => (destroyed ? null : drags.hitTest(point)),
+    pointerDown: (point) => !destroyed && drags.pointerDown(point),
+    pointerMove(point) {
+      if (!destroyed) drags.pointerMove(point);
+    },
+    pointerUp(point) {
+      if (!destroyed) drags.pointerUp(point);
+    },
+    cancelInteraction() {
+      return !destroyed && drags.cancel();
     },
 
     toggle(id) {

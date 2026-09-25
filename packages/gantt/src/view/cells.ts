@@ -20,6 +20,19 @@ export function formatDate(time: number, zone: TimeZone, locale: string | undefi
   ).format(time);
 }
 
+export function formatDateTime(time: number, zone: TimeZone, locale: string | undefined): string {
+  return cached(
+    `datetime|${locale ?? ''}|${zone}`,
+    () =>
+      new Intl.DateTimeFormat(
+        locale,
+        zone === 'local'
+          ? { dateStyle: 'medium', timeStyle: 'short' }
+          : { dateStyle: 'medium', timeStyle: 'short', timeZone: zone },
+      ),
+  ).format(time);
+}
+
 /**
  * End dates are exclusive: a task on 5–8 October ends at midnight on the 9th. Shown as a date, that reads
  * as one day too many, so an end exactly at midnight is shown as the day before (like MS Project).

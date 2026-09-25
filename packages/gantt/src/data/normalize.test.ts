@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { QuartzioError } from '../util/errors';
 import { createProjectState } from './normalize';
+import { createProject } from './project';
 
 const JAN_5 = Date.UTC(2026, 0, 5);
 
@@ -23,7 +24,49 @@ describe('createProjectState', () => {
       durationUnit: 'day',
       percentDone: 0,
       manuallyScheduled: false,
+      constraintType: null,
+      constraintDate: null,
     });
+  });
+
+  it('accepts a "start no earlier than" constraint, set together with its date', () => {
+    const state = createProjectState({
+      settings: { timeZone: 'UTC' },
+      tasks: [{ id: 1, constraintType: 'startnoearlierthan', constraintDate: '2026-01-05' }],
+    });
+    expect(state.tasks.byId.get(1)).toMatchObject({
+      constraintType: 'startnoearlierthan',
+      constraintDate: JAN_5,
+    });
+  });
+
+  it('checks constraints in transactions and raw operations too', () => {
+    const project = createProject({ tasks: [{ id: 1 }] });
+    expect(() =>
+      project.transact((tx) => {
+        tx.tasks.add({ id: 2, constraintType: 'startnoearlierthan' });
+      }),
+    ).toThrow(/together/);
+    project.transact((tx) => {
+      tx.tasks.update(1, { constraintType: 'startnoearlierthan', constraintDate: JAN_5 });
+    });
+    expect(() =>
+      project.transact((tx) => {
+        tx.tasks.update(1, { constraintDate: null });
+      }),
+    ).toThrow(/together/);
+    expect(() =>
+      project.apply([{ type: 'update', store: 'tasks', id: 1, changes: { constraintType: null } }]),
+    ).toThrow(/together/);
+  });
+
+  it.each([
+    [{ constraintType: 'sometime', constraintDate: JAN_5 }, /constraintType/],
+    [{ constraintType: 'muststarton', constraintDate: JAN_5 }, /not supported yet/],
+    [{ constraintType: 'startnoearlierthan' }, /together/],
+    [{ constraintDate: JAN_5 }, /together/],
+  ])('rejects the constraint %j', (fields, message) => {
+    expect(() => createProjectState({ tasks: [{ id: 1, ...(fields as object) }] })).toThrow(message);
   });
 
   it('accepts manuallyScheduled as a boolean only', () => {

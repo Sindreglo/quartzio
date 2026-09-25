@@ -3,7 +3,7 @@ import type { Dependency, DependencyType, Id, ProjectState, Task } from '../data
 import type { TimeAxis } from '../timeaxis/timeAxis';
 import { computeBar, type Bar } from './bars';
 import { taskDates } from './dates';
-import type { RowsState } from './rows';
+import { rowKey, type RowsState } from './rows';
 
 /** A dependency drawn as an arrow between two bars, in timeline coordinates. */
 export interface DependencyLine {
@@ -80,7 +80,7 @@ export function createDependencyView(): {
         const fromBar = barOf(dependency.from);
         const toBar = barOf(dependency.to);
         if (!fromBar || !toBar) continue;
-        const lineKey = `${typeof id === 'number' ? 'n' : 's'}:${String(id)}`;
+        const lineKey = rowKey(id);
         const path = route(dependency.type, fromBar, fromRow, toBar, toRow, rows.rowHeight);
         const old = previous.get(lineKey);
         const line =

@@ -5,6 +5,7 @@ import {
   assertDependencyEnds,
   assertNoParentCycle,
   assertNoStructureFields,
+  assertTaskConstraint,
   assertTaskDates,
   isId,
   normalizeCalendarChanges,
@@ -301,6 +302,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       const parentId = position.parentId ?? null;
       requireParent(parentId);
       const record: Task = { id, parentId, ...normalizeTaskFields(fields, owner, settings().timeZone) };
+      assertTaskConstraint(record);
       const { orderIndex, siblingIndex } = placementFor(parentId, position.index);
       apply({ type: 'add', store: 'tasks', record, index: orderIndex });
       // placementFor brought the tree up to date; insert instead of rebuilding it for the next add.
@@ -320,6 +322,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       // A new end before the start is an error. (A new start after the old end isn't: scheduling moves the
       // end, keeping the duration; see validateResult.)
       if ('endDate' in changes) assertTaskDates({ ...task, ...changes });
+      assertTaskConstraint({ ...task, ...changes });
       if (Object.keys(changes).length > 0) apply({ type: 'update', store: 'tasks', id, changes });
       touchedTasks.add(id);
     },

@@ -4,6 +4,7 @@ import type { ViewPreset } from '../timeaxis/presets';
 import type { HeaderCell, TimeAxis } from '../timeaxis/timeAxis';
 import type { ColumnInput, ColumnsState } from './columns';
 import type { DependencyLine } from './dependencies';
+import type { TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 
@@ -45,6 +46,8 @@ export interface ViewState {
   readonly today: TodayLine | null;
   /** Non-working time to shade, around the visible part of the timeline. */
   readonly nonWorkingTime: readonly TimeSpan[];
+  /** The bar being dragged or resized, where it would land; `null` when nothing is. */
+  readonly interaction: TaskInteraction | null;
 }
 
 export interface TodayLine {
@@ -99,6 +102,10 @@ export interface GanttOptions {
    * interval is shaded; with day ticks, whole non-working days; with longer ticks, nothing.
    */
   showNonWorkingTime?: boolean | undefined;
+  /** Move tasks by dragging their bars. Default `true`. See ADR 0009 for what a drop changes. */
+  taskDrag?: boolean | undefined;
+  /** Change a task's duration by dragging the end of its bar. Default `true`. */
+  taskResize?: boolean | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,
@@ -117,6 +124,20 @@ export interface GanttController {
    */
   setOptions: (options: GanttOptions) => void;
   setViewport: (viewport: Partial<Viewport>) => void;
+  /**
+   * What's under a point of the timeline body (x from the start of the axis, y from the top of the first
+   * row): a bar to move or a bar end to resize, if enabled. For the pointer cursor.
+   */
+  hitTest: (point: TimelinePoint) => TimelineHit | null;
+  /**
+   * Pointer events on the timeline body, in the same coordinates. `pointerDown` returns whether it grabbed a
+   * bar (so the renderer can capture the pointer). Moves under 3 px are a click. The drop is one transaction.
+   */
+  pointerDown: (point: TimelinePoint) => boolean;
+  pointerMove: (point: TimelinePoint) => void;
+  pointerUp: (point: TimelinePoint) => void;
+  /** Drops the current drag without changing anything (e.g. on Escape). Returns whether there was one. */
+  cancelInteraction: () => boolean;
   /**
    * Changes project data. Uncontrolled: applied immediately. Controlled: only reported through
    * `onChange`; edits in the same synchronous run build on each other, later edits build on the last

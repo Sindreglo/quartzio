@@ -22,7 +22,16 @@ export interface Task {
    * predecessor for others. Otherwise the task is scheduled automatically, as soon as possible.
    */
   readonly manuallyScheduled: boolean;
+  /** Set together with `constraintDate` (both or neither). Ignored for manually scheduled tasks. */
+  readonly constraintType: ConstraintType | null;
+  readonly constraintDate: number | null;
 }
+
+/**
+ * A scheduling constraint on a task. For now only "start no earlier than" (set when an automatically scheduled
+ * task is dragged); the other types come with milestone 8.
+ */
+export type ConstraintType = 'startnoearlierthan';
 
 /** Finish-to-start, start-to-start, finish-to-finish, start-to-finish. */
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
@@ -103,6 +112,8 @@ export interface TaskInput {
   durationUnit?: TimeUnit;
   percentDone?: number;
   manuallyScheduled?: boolean;
+  constraintType?: ConstraintType | null;
+  constraintDate?: DateInput | null;
 }
 
 export interface DependencyInput {

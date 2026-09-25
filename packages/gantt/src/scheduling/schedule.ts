@@ -93,6 +93,10 @@ function run(
     }
     // A manually scheduled task isn't pushed itself, but passes its parents' requirements on to its children.
     if (!task.manuallyScheduled) {
+      // "Start no earlier than": like a requirement from a predecessor (and passed on to children the same way).
+      if (task.constraintType === 'startnoearlierthan' && task.constraintDate !== null) {
+        start = Math.max(start, task.constraintDate);
+      }
       for (const dependency of dependencies.incoming(task.id)) {
         const from = indexOf.get(dependency.from);
         if (from === undefined || Number.isNaN(starts[from])) continue;

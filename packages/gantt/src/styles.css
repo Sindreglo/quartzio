@@ -21,6 +21,8 @@
   --qz-milestone-size: 14px;
   --qz-today-color: #ef4444;
   --qz-nonworking-color: rgb(15 23 42 / 4%);
+  --qz-tooltip-background: #1f2937;
+  --qz-tooltip-color: #ffffff;
   --qz-dependency-color: #8b93a7;
   --qz-dependency-width: 1.5px;
 
@@ -387,6 +389,55 @@
 }
 
 /* --- Timeline body: layers, rows and bars --- */
+
+/* Dragging: the cursor says what a press would do; the original bar fades while its preview moves. */
+.qz-timeline__body[data-hit='bar'] {
+  cursor: grab;
+}
+
+.qz-timeline__body[data-hit='resize-end'],
+.qz-timeline__body[data-dragging='resize'] {
+  cursor: ew-resize;
+}
+
+.qz-timeline__body[data-dragging='move'] {
+  cursor: grabbing;
+}
+
+/* No text selection in the timeline: a press there starts a drag. */
+.qz-timeline__body {
+  user-select: none;
+}
+
+/* A touch on a bar drags it instead of scrolling the chart (only while dragging or resizing is on). */
+.qz-timeline__body[data-interactive] .qz-bar {
+  touch-action: none;
+}
+
+.qz-timeline__row--dragging .qz-bar {
+  opacity: 0.35;
+}
+
+.qz-timeline__draft {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.qz-drag-tooltip {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  padding: 3px 6px;
+  font-size: var(--qz-header-font-size);
+  color: var(--qz-tooltip-color);
+  white-space: nowrap;
+  background: var(--qz-tooltip-background);
+  border-radius: 4px;
+}
+
+.qz-drag-tooltip--below {
+  top: calc(100% - 2px);
+  bottom: auto;
+}
 
 .qz-dependencies {
   position: absolute;

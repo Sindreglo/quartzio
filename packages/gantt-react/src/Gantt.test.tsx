@@ -230,6 +230,101 @@ describe('<Gantt />', () => {
     );
   });
 
+  describe('dragging', () => {
+    // UTC, 32 px per day from Monday 5 Oct; a manual task on 6–8 Oct (x 32–96) in row 0.
+    const dragData: ProjectInput = {
+      settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+      tasks: [
+        { id: 'm', name: 'Move me', manuallyScheduled: true, startDate: '2026-10-06', endDate: '2026-10-08' },
+      ],
+    };
+    const renderDrag = (props = {}) =>
+      render(
+        <Gantt
+          defaultData={dragData}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          locale="en-US"
+          {...props}
+        />,
+      );
+    const body = (container: HTMLElement) => container.querySelector('.qz-timeline__body') as HTMLElement;
+    const pointer = { pointerId: 1, button: 0, isPrimary: true };
+
+    it('shows a preview with the new dates while dragging, and reports the drop', () => {
+      const onChange = vi.fn();
+      const { container } = renderDrag({ onChange });
+      const timeline = body(container);
+      fireEvent.pointerDown(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 114, clientY: 18 });
+      expect(timeline.dataset.dragging).toBe('move');
+      expect(container.querySelector('.qz-timeline__row--dragging')).not.toBeNull();
+      expect(container.querySelector('.qz-timeline__draft .qz-drag-tooltip')?.textContent).toBe(
+        'Oct 8, 2026 – Oct 9, 2026',
+      );
+      fireEvent.pointerUp(timeline, { ...pointer, clientX: 114, clientY: 18 });
+      expect(container.querySelector('.qz-timeline__draft')).toBeNull();
+      const { data } = onChange.mock.calls.at(-1)?.[0] as { data: ProjectData };
+      expect(data.tasks[0]?.startDate).toBe(Date.UTC(2026, 9, 8));
+    });
+
+    it('ignores a second finger, and lets Escape go no further than the drag', () => {
+      const onChange = vi.fn();
+      const { container } = renderDrag({ onChange });
+      const timeline = body(container);
+      fireEvent.pointerDown(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 114, clientY: 18 });
+      fireEvent.pointerDown(timeline, {
+        pointerId: 2,
+        button: 0,
+        isPrimary: false,
+        clientX: 300,
+        clientY: 18,
+      });
+      expect(timeline.dataset.dragging).toBe('move');
+      const outer = vi.fn();
+      window.addEventListener('keydown', outer);
+      fireEvent.keyDown(window, { key: 'Escape' });
+      window.removeEventListener('keydown', outer);
+      expect(outer).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('drops the drag on Escape, changing nothing', () => {
+      const onChange = vi.fn();
+      const { container } = renderDrag({ onChange });
+      const timeline = body(container);
+      fireEvent.pointerDown(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 114, clientY: 18 });
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(container.querySelector('.qz-timeline__draft')).toBeNull();
+      fireEvent.pointerUp(timeline, { ...pointer, clientX: 114, clientY: 18 });
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('tells the cursor what a press would do, and nothing when dragging is off', () => {
+      const { container, rerender } = renderDrag();
+      const timeline = body(container);
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      expect(timeline.dataset.hit).toBe('bar');
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 94, clientY: 18 });
+      expect(timeline.dataset.hit).toBe('resize-end');
+      rerender(
+        <Gantt
+          defaultData={dragData}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          taskDrag={false}
+          taskResize={false}
+        />,
+      );
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      expect(timeline.dataset.hit).toBe('');
+    });
+  });
+
   it('renders tasks 1 and "1" as two rows, with row positions for assistive tech', () => {
     const { container } = render(
       <Gantt

@@ -8,6 +8,7 @@ import { shareTreeIndex } from './tree';
 import type {
   Calendar,
   CalendarException,
+  ConstraintType,
   CalendarExceptionInput,
   CalendarInput,
   DateInput,
@@ -136,6 +137,27 @@ function toBoolean(value: unknown, field: string, owner: string): boolean {
   return value;
 }
 
+const CONSTRAINT_TYPES: readonly ConstraintType[] = ['startnoearlierthan'];
+// Recognized, so the error can say they're coming rather than unknown.
+const FUTURE_CONSTRAINT_TYPES = [
+  'startnolaterthan',
+  'finishnoearlierthan',
+  'finishnolaterthan',
+  'muststarton',
+  'mustfinishon',
+];
+
+function toConstraintType(value: unknown, owner: string): ConstraintType | null {
+  if (value === undefined || value === null) return null;
+  if (CONSTRAINT_TYPES.includes(value as ConstraintType)) return value as ConstraintType;
+  if (typeof value === 'string' && FUTURE_CONSTRAINT_TYPES.includes(value)) {
+    throw new QuartzioError(`${owner}: constraint "${value}" is not supported yet.`);
+  }
+  throw new QuartzioError(
+    `${owner}: "constraintType" must be one of ${CONSTRAINT_TYPES.join(', ')}, or null.`,
+  );
+}
+
 function toUnit(value: TimeUnit | undefined, fallback: TimeUnit, field: string, owner: string): TimeUnit {
   if (value === undefined) return fallback;
   if (!isTimeUnit(value)) throw new QuartzioError(`${owner}: "${field}" is not a valid time unit.`);
@@ -156,6 +178,8 @@ export function normalizeTaskFields(input: TaskFieldsInput, owner: string, zone:
     durationUnit: toUnit(input.durationUnit, DEFAULT_DURATION_UNIT, 'durationUnit', owner),
     percentDone: toPercent(input.percentDone, owner),
     manuallyScheduled: toBoolean(input.manuallyScheduled, 'manuallyScheduled', owner),
+    constraintType: toConstraintType(input.constraintType, owner),
+    constraintDate: toTime(input.constraintDate, 'constraintDate', owner, zone),
   };
 }
 
@@ -177,6 +201,11 @@ export function normalizeTaskChanges(
   if (input.manuallyScheduled !== undefined) {
     changes.manuallyScheduled = toBoolean(input.manuallyScheduled, 'manuallyScheduled', owner);
   }
+  if (input.constraintType !== undefined)
+    changes.constraintType = toConstraintType(input.constraintType, owner);
+  if (input.constraintDate !== undefined) {
+    changes.constraintDate = toTime(input.constraintDate, 'constraintDate', owner, zone);
+  }
   return changes;
 }
 
@@ -190,6 +219,15 @@ export function assertNoStructureFields(input: object, owner: string): void {
   if ('parentId' in input) {
     throw new QuartzioError(
       `${owner}: "parentId" is not supported here. Use a position ({ parentId }) or move().`,
+    );
+  }
+}
+
+/** A constraint has a type and a date, or neither. */
+export function assertTaskConstraint(task: Task): void {
+  if ((task.constraintType === null) !== (task.constraintDate === null)) {
+    throw new QuartzioError(
+      `${label('Task', task.id)}: "constraintType" and "constraintDate" are set together (both or neither).`,
     );
   }
 }
@@ -498,6 +536,7 @@ export function createProjectState(input: ProjectInput = {}, previous?: ProjectS
       ...normalizeTaskFields(task, owner, settings.timeZone),
     };
     assertTaskDates(record);
+    assertTaskConstraint(record);
     tasks.set(task.id, reuse(record, previous?.tasks.byId.get(task.id), task));
     taskOrder.push(task.id);
     const children: unknown = task.children ?? [];
@@ -604,6 +643,7 @@ export function assertValidState(
       owner,
     );
     if (taskDates) assertTaskDates(task);
+    assertTaskConstraint(task);
   }
   assertTaskHierarchy(state.tasks.byId);
 

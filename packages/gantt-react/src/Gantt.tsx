@@ -33,7 +33,7 @@ export interface GanttProps extends GanttOptions {
 export function Gantt(props: GanttProps): ReactElement {
   const { className, ref, data, defaultData, onChange } = props;
   const { preset, startDate, endDate, locale, columns, rowHeight, headerRowHeight } = props;
-  const { showToday, showNonWorkingTime } = props;
+  const { showToday, showNonWorkingTime, taskDrag, taskResize } = props;
   // Key presence, not the value, decides the mode (see GanttProps).
   const controlled = 'data' in props;
 
@@ -54,6 +54,8 @@ export function Gantt(props: GanttProps): ReactElement {
       headerRowHeight,
       showToday,
       showNonWorkingTime,
+      taskDrag,
+      taskResize,
     }),
   );
   // The third argument makes server rendering work; the server snapshot is the initial state.
@@ -90,6 +92,8 @@ export function Gantt(props: GanttProps): ReactElement {
       headerRowHeight,
       showToday,
       showNonWorkingTime,
+      taskDrag,
+      taskResize,
     });
   }, [
     gantt,
@@ -105,6 +109,8 @@ export function Gantt(props: GanttProps): ReactElement {
     headerRowHeight,
     showToday,
     showNonWorkingTime,
+    taskDrag,
+    taskResize,
   ]);
 
   const { timeAxis, header, rows } = state;
@@ -229,6 +235,9 @@ export function Gantt(props: GanttProps): ReactElement {
             {rows.count === 0 && <div className="qz-gantt__empty">No tasks</div>}
           </div>
           <TimelineBody
+            gantt={gantt}
+            interaction={state.interaction}
+            interactive={taskDrag !== false || taskResize !== false}
             rows={rows.items}
             dependencies={state.dependencies}
             nonWorkingTime={state.nonWorkingTime}

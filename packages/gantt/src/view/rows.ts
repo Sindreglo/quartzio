@@ -8,6 +8,9 @@ import { computeBar, sameBar, type Bar } from './bars';
 import type { ResolvedColumns } from './columns';
 import type { Viewport } from './types';
 
+/** A string key per task for rendering lists: tasks 1 and "1" are different. */
+export const rowKey = (id: Id): string => `${typeof id === 'number' ? 'n' : 's'}:${String(id)}`;
+
 export interface Row {
   readonly id: Id;
   /** Unique string key for rendering lists (ids 1 and "1" are different tasks). */
@@ -90,8 +93,12 @@ const sameDates = (a: TaskDates | null, b: TaskDates | null) =>
   a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end);
 
 export function createRowsView(): {
-  /** The rows, and the row index of every visible task (the same map while visibility is unchanged). */
-  rowsFor: (input: RowsInput) => { rows: RowsState; rowIndex: ReadonlyMap<Id, number> };
+  /** The rows, the row index of every visible task and the task of every row (the same while visibility is unchanged). */
+  rowsFor: (input: RowsInput) => {
+    rows: RowsState;
+    rowIndex: ReadonlyMap<Id, number>;
+    rowIds: readonly Id[];
+  };
 } {
   let visibleCache: { key: unknown[]; rows: VisibleRows } | undefined;
   let calendarCache: { project: ProjectState; calendar: WorkingCalendar | undefined } | undefined;
@@ -159,7 +166,7 @@ export function createRowsView(): {
       };
       const row: Row = {
         id,
-        key: `${typeof id === 'number' ? 'n' : 's'}:${String(id)}`,
+        key: rowKey(id),
         index,
         y: index * rowHeight,
         height: rowHeight,
@@ -202,7 +209,8 @@ export function createRowsView(): {
   return {
     rowsFor: (input) => {
       const rows = rowsFor(input);
-      return { rows, rowIndex: (visibleCache as { rows: VisibleRows }).rows.index };
+      const visible = (visibleCache as { rows: VisibleRows }).rows;
+      return { rows, rowIndex: visible.index, rowIds: visible.ids };
     },
   };
 }

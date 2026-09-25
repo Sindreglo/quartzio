@@ -19,6 +19,7 @@ const DEMOS =
         'dependencies',
         'dependencies:hierarchy',
         'dependencies:big',
+        'drag',
         'task-list',
         'task-list:big',
         'timeaxis',
@@ -355,6 +356,80 @@ async function gestureChecks(send) {
   return problems;
 }
 
+// Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
+// scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
+// the day), the bar must sit on a day boundary, and nothing may scroll during the drag.
+async function dragChecks(send, demo) {
+  if (demo !== 'drag') return [];
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
+  const measure = `(() => {
+    const bar = document.querySelector('.qz-timeline__row[data-key="s:vendor"] .qz-bar');
+    const body = document.querySelector('.qz-timeline__body');
+    const cell = document.querySelector('.qz-header__row:last-child .qz-header__cell');
+    if (!bar || !body || !cell) return null;
+    const rect = bar.getBoundingClientRect();
+    const origin = body.getBoundingClientRect().left; // moves with scrolling
+    return {
+      x: rect.left + Math.min(10, rect.width / 2),
+      y: rect.top + rect.height / 2,
+      left: rect.left - origin,
+      tick: cell.getBoundingClientRect().width,
+      ticks: [...document.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].map((c) => c.getBoundingClientRect().left - origin),
+      scroll: document.querySelector('.qz-gantt__scroller').scrollLeft,
+      start: document.querySelector('.qz-grid__row[data-key="s:vendor"] .qz-grid__cell:nth-child(2)').textContent,
+    };
+  })()`;
+  // Let earlier checks' scrolling (a touch fling keeps going for a while) come to rest first.
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft = 0`);
+  await sleep(1000);
+  const before = await evaluate(measure);
+  if (!before) return ['drag demo: no Vendor bar to drag'];
+  const mouse = (type, x, y) =>
+    send('Input.dispatchMouseEvent', {
+      type,
+      x,
+      y,
+      button: 'left',
+      buttons: type === 'mouseReleased' ? 0 : 1,
+      clickCount: 1,
+    });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.x, y: before.y });
+  await mouse('mousePressed', before.x, before.y);
+  let scrolled = false;
+  for (let step = 1; step <= 8; step++) {
+    await mouse('mouseMoved', before.x + (step * 2 * before.tick) / 8, before.y);
+    if ((await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft`)) !== before.scroll) {
+      scrolled = true;
+    }
+  }
+  // Mid-drag: the tooltip with the new dates is shown, inside the visible part of the timeline.
+  const tooltip = await evaluate(`(() => {
+    const tip = document.querySelector('.qz-drag-tooltip');
+    if (!tip) return null;
+    const rect = tip.getBoundingClientRect();
+    const view = document.querySelector('.qz-gantt__scroller').getBoundingClientRect();
+    return { text: tip.textContent, visible: rect.top >= view.top && rect.bottom <= view.bottom && rect.width > 0 };
+  })()`);
+  await mouse('mouseReleased', before.x + 2 * before.tick, before.y);
+  await sleep(500);
+  const after = await evaluate(measure);
+  const problems = [];
+  if (!after) return ['drag demo: the Vendor bar is gone after dragging'];
+  if (scrolled) problems.push('drag demo: the timeline scrolled during the drag');
+  if (!tooltip?.visible)
+    problems.push(`drag demo: no visible tooltip while dragging (${JSON.stringify(tooltip)})`);
+  if (before.start !== '7 Oct 2026' || after.start !== '9 Oct 2026') {
+    problems.push(
+      `drag demo: Vendor started on ${before.start} and on ${after.start} after the drag (expected 7 → 9 Oct)`,
+    );
+  }
+  if (!after.ticks.some((tick) => Math.abs(tick - after.left) <= 1)) {
+    problems.push('drag demo: the dropped bar is not on a day boundary');
+  }
+  return problems;
+}
+
 const server = await createServer({
   root: join(ROOT, 'apps/playground-react'),
   configFile: join(ROOT, 'apps/playground-react/vite.config.ts'),
@@ -439,6 +514,7 @@ try {
       problems.push(...(horizontal.result?.result?.value ?? ['could not evaluate horizontal checks']));
       problems.push(...(await wheelChecks(send)));
       problems.push(...(await gestureChecks(send)));
+      problems.push(...(await dragChecks(send, id)));
       const label = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}`;
       const file = join(OUT, `${label}.png`);
       const shot = await send('Page.captureScreenshot', { format: 'png' });
