@@ -3,6 +3,7 @@ import { BarsDemo } from './bars';
 import { BasicDemo } from './basic';
 import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
+import { DependenciesDemo } from './dependencies';
 import { SchedulingDemo } from './scheduling';
 import { TaskListDemo } from './task-list';
 import { TimeAxisDemo } from './timeaxis';
@@ -64,5 +65,12 @@ export const demos: Demo[] = [
     description:
       'Tasks start as soon as possible after the project start and their predecessors (FS, SS, FF, SF with lag); parents span their children; manually scheduled tasks keep their dates. Dates are written back into the data.',
     Component: SchedulingDemo,
+  },
+  {
+    id: 'dependencies',
+    title: 'Dependencies',
+    description:
+      'Arrows between tasks: out of the predecessor’s side and into the successor’s, for FS, SS, FF and SF, going around when there is no room. Lines are virtualized with the rows.',
+    Component: DependenciesDemo,
   },
 ];

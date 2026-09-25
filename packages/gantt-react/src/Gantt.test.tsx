@@ -306,6 +306,29 @@ describe('<Gantt />', () => {
       expect(body(container).querySelectorAll('.qz-bar')).toHaveLength(3);
     });
 
+    it('draws dependencies as paths with an arrowhead, behind the bars', () => {
+      const { container } = render(
+        <Gantt
+          defaultData={{ ...project, dependencies: [{ id: 'd', from: 't', to: 'm' }] }}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+        />,
+      );
+      const paths = body(container).querySelectorAll('.qz-dependencies .qz-dependency');
+      expect(paths).toHaveLength(1);
+      const path = paths[0] as SVGPathElement;
+      expect(path.getAttribute('data-from')).toBe('t');
+      expect(path.getAttribute('data-to')).toBe('m');
+      expect(path.getAttribute('d')).toMatch(/^M\S+ \S+ H/);
+      const marker = path.getAttribute('marker-end')?.match(/#([^)]+)/)?.[1] ?? '';
+      expect(marker).toMatch(/^[\w-]+$/);
+      expect(container.querySelector(`marker#${marker}`)).not.toBeNull();
+      // Behind the bars: the layer comes before the rows.
+      const layers = [...body(container).children].map((child) => child.getAttribute('class'));
+      expect(layers.indexOf('qz-dependencies')).toBeLessThan(layers.indexOf('qz-timeline__row'));
+    });
+
     it('shows the today line and weekend shading, and hides them when turned off', () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(Date.UTC(2026, 9, 6, 12));

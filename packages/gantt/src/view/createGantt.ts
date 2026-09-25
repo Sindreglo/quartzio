@@ -8,6 +8,7 @@ import { QuartzioError } from '../util/errors';
 import { createDataBinding } from './binding';
 import { resolveColumns, type ColumnInput, type ResolvedColumns } from './columns';
 import type { TimeAxis } from '../timeaxis/timeAxis';
+import { createDependencyView } from './dependencies';
 import { createNonWorkingView } from './nonWorking';
 import { createRowsView } from './rows';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
@@ -115,6 +116,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   const binding = createDataBinding(project, controlled, options.data, options.onChange, initialPatch);
   const timelineView = createTimelineView();
   const rowsView = createRowsView();
+  const dependencyView = createDependencyView();
   const nonWorkingView = createNonWorkingView();
   const changes = createEmitter<ViewState>();
   let collapsed: ReadonlySet<Id> = new Set();
@@ -136,21 +138,28 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   // Deriving never throws: options are validated up front, and oversized ranges are cut short.
   const derive = (viewport: Viewport, projectState: ProjectState): ViewState => {
     const timeAxis = timelineView.axisFor(projectState, viewport.width, view.timeline);
+    const { rows, rowIndex } = rowsView.rowsFor({
+      project: projectState,
+      collapsed,
+      collapsedVersion,
+      viewport,
+      rowHeight: view.rowHeight,
+      columns: view.columns,
+      locale: view.timeline.locale,
+      timeAxis,
+    });
     return {
       viewport,
       project: projectState,
       timeAxis,
       header: timelineView.headerFor(timeAxis, viewport, view.headerRowHeight),
       columns: view.columns.state,
-      rows: rowsView.rowsFor({
+      rows,
+      dependencies: dependencyView.linesFor({
         project: projectState,
-        collapsed,
-        collapsedVersion,
-        viewport,
-        rowHeight: view.rowHeight,
-        columns: view.columns,
-        locale: view.timeline.locale,
         timeAxis,
+        rows,
+        rowIndex,
       }),
       today: todayOn(timeAxis),
       nonWorkingTime: nonWorkingView.spansFor(projectState, timeAxis, viewport, view.showNonWorkingTime),

@@ -183,6 +183,11 @@ body {
   font: inherit;
 }
 
+/* Long option texts (task names) would otherwise make a select wider than a narrow page. */
+.pg-form select {
+  max-width: 18rem;
+}
+
 .pg-facts {
   display: flex;
   flex-wrap: wrap;

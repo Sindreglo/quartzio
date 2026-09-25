@@ -280,7 +280,7 @@ export function SchedulingDemo() {
       </p>
 
       <div>
-        <h3>Dependencies (arrows come in milestone 5b)</h3>
+        <h3>Dependencies</h3>
         <ul className="pg-list">
           {dependencies.map((dependency) => (
             <li key={String(dependency.id)}>

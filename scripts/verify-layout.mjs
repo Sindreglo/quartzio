@@ -13,7 +13,16 @@ const OUT = join(ROOT, '.layout');
 const DEMOS =
   process.argv.slice(2).length > 0
     ? process.argv.slice(2)
-    : ['bars', 'scheduling', 'task-list', 'task-list:big', 'timeaxis'];
+    : [
+        'bars',
+        'scheduling',
+        'dependencies',
+        'dependencies:hierarchy',
+        'dependencies:big',
+        'task-list',
+        'task-list:big',
+        'timeaxis',
+      ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
 const VARIANTS = [{ width: 1400 }, { width: 700 }, { width: 700, classic: true }];
@@ -153,6 +162,54 @@ const CHECKS = `(() => {
         problems.push('bar "' + bar.title + '" does not start at 00:00, 08:00 or 16:00 (x = ' + x + ')');
         break;
       }
+    }
+  }
+  // Dependency lines leave the predecessor's side (end for FS/FF, start for SS/SF) and enter the successor's
+  // side (start for FS/SS, end for FF/SF), at a height within each bar. Demos with dependencies must draw some.
+  const chart = document.querySelector('.qz-gantt');
+  const timelineBody = chart?.querySelector('.qz-timeline__body');
+  if (chart && timelineBody) {
+    const origin = timelineBody.getBoundingClientRect();
+    const timelineRows = [...chart.querySelectorAll('.qz-timeline__row')];
+    const barOf = (id) => timelineRows.find((row) => row.dataset.key.slice(2) === id)?.querySelector('.qz-bar');
+    const point = (bar, side) => {
+      const rect = bar.getBoundingClientRect();
+      const milestone = bar.classList.contains('qz-bar--milestone');
+      const center = rect.left + rect.width / 2;
+      const x = milestone ? center + (side === 'start' ? -7 : 7) : side === 'start' ? rect.left : rect.right;
+      return { x: x - origin.left, top: rect.top - origin.top, bottom: rect.bottom - origin.top };
+    };
+    const meets = (x, y, target) =>
+      Math.abs(x - target.x) <= 1 && y >= target.top - 1 && y <= target.bottom + 1;
+    const paths = [...chart.querySelectorAll('.qz-dependency')];
+    let checked = 0;
+    for (const path of paths) {
+      const numbers = path.getAttribute('d').match(/-?[0-9.]+/g).map(Number);
+      const commands = path.getAttribute('d').match(/[MHV]/g);
+      let x = numbers[0];
+      let y = numbers[1];
+      commands.slice(1).forEach((command, i) => {
+        if (command === 'H') x = numbers[i + 2];
+        else y = numbers[i + 2];
+      });
+      const fromBar = barOf(path.dataset.from);
+      const toBar = barOf(path.dataset.to);
+      if (!fromBar || !toBar) continue; // an end outside the rendered rows
+      const type = path.dataset.type;
+      const from = point(fromBar, type === 'FS' || type === 'FF' ? 'end' : 'start');
+      const to = point(toBar, type === 'FS' || type === 'SS' ? 'start' : 'end');
+      checked++;
+      if (!meets(numbers[0], numbers[1], from) || !meets(x, y, to)) {
+        problems.push('dependency ' + path.dataset.from + ' → ' + path.dataset.to + ' (' + type + ') does not meet its bars');
+        break;
+      }
+    }
+    const withDependencies = ['#bars', '#scheduling', '#dependencies', '#task-list'];
+    if (withDependencies.includes(location.hash) && paths.length > 0 && checked === 0) {
+      problems.push('no dependency line could be checked');
+    }
+    if (['#bars', '#scheduling', '#dependencies'].includes(location.hash) && paths.length === 0) {
+      problems.push('the demo draws no dependency lines');
     }
   }
   // Both sides scroll vertically as one: right after a scroll, before any scroll event has run, rows still line

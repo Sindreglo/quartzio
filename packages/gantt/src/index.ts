@@ -78,6 +78,7 @@ export { taskDates } from './view/dates';
 
 // View
 export type { Bar, BarKind } from './view/bars';
+export type { DependencyLine } from './view/dependencies';
 export type { TimeSpan } from './view/nonWorking';
 export type {
   BuiltInColumnId,

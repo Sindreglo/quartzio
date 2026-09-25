@@ -3,6 +3,7 @@ import type { DateInput, Id, Patch, ProjectData, ProjectInput, ProjectState } fr
 import type { ViewPreset } from '../timeaxis/presets';
 import type { HeaderCell, TimeAxis } from '../timeaxis/timeAxis';
 import type { ColumnInput, ColumnsState } from './columns';
+import type { DependencyLine } from './dependencies';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 
@@ -38,6 +39,8 @@ export interface ViewState {
   readonly columns: ColumnsState;
   /** Visible task rows (virtualized), in tree order, with their bars. */
   readonly rows: RowsState;
+  /** Dependency arrows near the rendered rows (virtualized with them). */
+  readonly dependencies: readonly DependencyLine[];
   /** Where "now" is on the timeline, or `null` when outside it (or turned off). */
   readonly today: TodayLine | null;
   /** Non-working time to shade, around the visible part of the timeline. */

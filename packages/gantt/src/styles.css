@@ -21,6 +21,8 @@
   --qz-milestone-size: 14px;
   --qz-today-color: #ef4444;
   --qz-nonworking-color: rgb(15 23 42 / 4%);
+  --qz-dependency-color: #8b93a7;
+  --qz-dependency-width: 1.5px;
 
   position: relative;
   /* The scroll area, the vertical scrollbar to its right and the horizontal scrollbars below it. */
@@ -386,6 +388,24 @@
 
 /* --- Timeline body: layers, rows and bars --- */
 
+.qz-dependencies {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.qz-dependency {
+  fill: none;
+  stroke: var(--qz-dependency-color);
+  stroke-width: var(--qz-dependency-width);
+}
+
+.qz-dependency__arrow {
+  fill: var(--qz-dependency-color);
+}
+
 .qz-timeline__layer {
   position: absolute;
   inset: 0;
@@ -437,8 +457,9 @@
 }
 
 /* Summary bars: a thin bar with downward points at both ends, spanning the children. */
+/* Centered on the row's middle, where dependency lines meet it; the end caps hang below. */
 .qz-bar--summary {
-  top: 34%;
+  top: calc(50% - 4px);
   height: 7px;
   overflow: visible;
   background: var(--qz-summary-color);

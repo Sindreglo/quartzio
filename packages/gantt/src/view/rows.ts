@@ -59,6 +59,8 @@ export const UNMEASURED_HEIGHT = 800;
 interface VisibleRows {
   readonly ids: readonly Id[];
   readonly depths: readonly number[];
+  /** Row index per visible task. */
+  readonly index: ReadonlyMap<Id, number>;
 }
 
 /** Tree order, skipping the descendants of collapsed tasks. Iterative, so deep trees can't overflow. */
@@ -66,9 +68,11 @@ function visibleRows(project: ProjectState, collapsed: ReadonlySet<Id>): Visible
   const tree = getTreeIndex(project.tasks);
   const ids: Id[] = [];
   const depths: number[] = [];
+  const index = new Map<Id, number>();
   const stack: [Id, number][] = [...tree.children(null)].reverse().map((id): [Id, number] => [id, 0]);
   while (stack.length > 0) {
     const [id, depth] = stack.pop() as [Id, number];
+    index.set(id, ids.length);
     ids.push(id);
     depths.push(depth);
     if (!collapsed.has(id)) {
@@ -76,7 +80,7 @@ function visibleRows(project: ProjectState, collapsed: ReadonlySet<Id>): Visible
       for (let i = children.length - 1; i >= 0; i--) stack.push([children[i] as Id, depth + 1]);
     }
   }
-  return { ids, depths };
+  return { ids, depths, index };
 }
 
 const sameCells = (a: readonly string[], b: readonly string[]) =>
@@ -85,7 +89,10 @@ const sameCells = (a: readonly string[], b: readonly string[]) =>
 const sameDates = (a: TaskDates | null, b: TaskDates | null) =>
   a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end);
 
-export function createRowsView(): { rowsFor: (input: RowsInput) => RowsState } {
+export function createRowsView(): {
+  /** The rows, and the row index of every visible task (the same map while visibility is unchanged). */
+  rowsFor: (input: RowsInput) => { rows: RowsState; rowIndex: ReadonlyMap<Id, number> };
+} {
   let visibleCache: { key: unknown[]; rows: VisibleRows } | undefined;
   let calendarCache: { project: ProjectState; calendar: WorkingCalendar | undefined } | undefined;
   let windowCache: { key: unknown[]; first: number; last: number; state: RowsState } | undefined;
@@ -192,5 +199,10 @@ export function createRowsView(): { rowsFor: (input: RowsInput) => RowsState } {
     return state;
   };
 
-  return { rowsFor };
+  return {
+    rowsFor: (input) => {
+      const rows = rowsFor(input);
+      return { rows, rowIndex: (visibleCache as { rows: VisibleRows }).rows.index };
+    },
+  };
 }

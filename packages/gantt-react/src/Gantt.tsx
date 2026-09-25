@@ -230,6 +230,7 @@ export function Gantt(props: GanttProps): ReactElement {
           </div>
           <TimelineBody
             rows={rows.items}
+            dependencies={state.dependencies}
             nonWorkingTime={state.nonWorkingTime}
             today={state.today}
             width={timeAxis.totalWidth}
