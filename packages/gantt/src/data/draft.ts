@@ -1,3 +1,4 @@
+import { shareDependencyEnds } from './graph';
 import { shareTreeIndex } from './tree';
 import type { Id, ProjectSettings, ProjectState, StoreName, StoreRecords, Table } from './types';
 
@@ -64,11 +65,14 @@ export class Draft {
     if (this.writable.size === 0 && this.settings === undefined) return this.base;
     const tasks = this.read('tasks');
     if (this.structureVersionOf('tasks') === 0) shareTreeIndex(this.base.tasks, tasks);
+    const dependencies = this.read('dependencies');
+    if (this.structureVersionOf('dependencies') === 0)
+      shareDependencyEnds(this.base.dependencies, dependencies);
     return {
       settings: this.readSettings(),
       calendars: this.read('calendars'),
       tasks,
-      dependencies: this.read('dependencies'),
+      dependencies,
     };
   }
 }

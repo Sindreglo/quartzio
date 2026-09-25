@@ -1,6 +1,6 @@
 import type { GanttController, ProjectData, ProjectInput } from '@quartzio/gantt';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { createRef, useState } from 'react';
+import { createRef, StrictMode, useState } from 'react';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Gantt } from './Gantt';
@@ -208,6 +208,28 @@ describe('<Gantt />', () => {
     }
   });
 
+  it('reports the initial scheduling once, also in StrictMode', async () => {
+    const onChange = vi.fn();
+    render(
+      <StrictMode>
+        <Gantt
+          defaultData={{
+            settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+            tasks: [{ id: 'a', duration: 2 }],
+          }}
+          onChange={onChange}
+        />
+      </StrictMode>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect((onChange.mock.calls[0]?.[0] as { data: ProjectData }).data.tasks[0]?.startDate).toBe(
+      Date.UTC(2026, 9, 5, 8),
+    );
+  });
+
   it('renders tasks 1 and "1" as two rows, with row positions for assistive tech', () => {
     const { container } = render(
       <Gantt
@@ -226,6 +248,7 @@ describe('<Gantt />', () => {
 
   describe('timeline body', () => {
     // 'weekAndDay': 32 px per day, starting on Monday 5 October.
+    // Manually scheduled: dates as given (these tests are about drawing, not scheduling).
     const project: ProjectInput = {
       settings: { timeZone: 'UTC' },
       tasks: [
@@ -233,10 +256,17 @@ describe('<Gantt />', () => {
           id: 'p',
           name: 'Phase',
           children: [
-            { id: 't', name: 'Build', startDate: '2026-10-06', endDate: '2026-10-08', percentDone: 25 },
+            {
+              id: 't',
+              name: 'Build',
+              startDate: '2026-10-06',
+              endDate: '2026-10-08',
+              percentDone: 25,
+              manuallyScheduled: true,
+            },
           ],
         },
-        { id: 'm', name: 'Launch', startDate: '2026-10-09' },
+        { id: 'm', name: 'Launch', startDate: '2026-10-09', manuallyScheduled: true },
         { id: 'u', name: 'Someday' },
       ],
     };

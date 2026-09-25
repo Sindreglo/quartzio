@@ -343,7 +343,8 @@ describe('createProject', () => {
     });
 
     it('moves a task with its subtree to another parent', () => {
-      const project = createProject(input);
+      // Without the dependency a1 → b, which would make a1 depend on its new grandparent (a cycle).
+      const project = createProject({ ...input, dependencies: [] });
       project.transact((tx) => {
         tx.tasks.move('a', { parentId: 'b' });
       });
@@ -456,5 +457,90 @@ describe('createProject', () => {
       expect(project.getState().tasks.order).toEqual(['only']);
       expect(listener).toHaveBeenCalledWith({ state: project.getState(), patch: null });
     });
+  });
+});
+
+describe('propagate', () => {
+  // A stand-in for the scheduler: names are upper case. Idempotent, like the real one must be.
+  const upperCase = (state: ProjectState): Operation[] =>
+    [...state.tasks.byId.values()]
+      .filter((task) => task.name !== task.name.toUpperCase())
+      .map((task) => ({
+        type: 'update',
+        store: 'tasks',
+        id: task.id,
+        changes: { name: task.name.toUpperCase() },
+      }));
+  const names = (state: ProjectState) => [...state.tasks.byId.values()].map((task) => task.name);
+
+  it('completes the initial data and every load, and returns what it changed', () => {
+    const project = createProject({ tasks: [{ id: 1, name: 'a' }] }, { propagate: upperCase });
+    expect(names(project.getState())).toEqual(['A']);
+    const patch = project.load({
+      tasks: [
+        { id: 1, name: 'b' },
+        { id: 2, name: 'C' },
+      ],
+    });
+    expect(names(project.getState())).toEqual(['B', 'C']);
+    expect(patch?.operations).toEqual([{ type: 'update', store: 'tasks', id: 1, changes: { name: 'B' } }]);
+    expect(project.load({ tasks: [{ id: 1, name: 'D' }] })).toBeNull();
+  });
+
+  it('adds its operations to the same transaction, and the inverse undoes both', () => {
+    const project = createProject({ tasks: [{ id: 1, name: 'A' }] }, { propagate: upperCase });
+    const listener = vi.fn();
+    project.subscribe(listener);
+    const before = project.toData();
+    const patch = project.transact((tx) => {
+      tx.tasks.add({ id: 2, name: 'b' });
+    });
+    expect(names(project.getState())).toEqual(['A', 'B']);
+    expect(patch?.operations).toHaveLength(2);
+    expect(listener).toHaveBeenCalledTimes(1);
+    project.apply(patch?.inverse ?? []);
+    expect(project.toData()).toEqual(before);
+  });
+
+  it('completes planned changes and raw operations too', () => {
+    const project = createProject({ tasks: [{ id: 1, name: 'A' }] }, { propagate: upperCase });
+    const planned = project.plan((tx) => {
+      tx.tasks.update(1, { name: 'x' });
+    });
+    expect(planned?.state.tasks.byId.get(1)?.name).toBe('X');
+    const patch = project.apply([{ type: 'update', store: 'tasks', id: 1, changes: { name: 'y' } }]);
+    expect(names(project.getState())).toEqual(['Y']);
+    expect(patch?.operations).toHaveLength(2);
+  });
+
+  it('passes what changed, or null for a load', () => {
+    const propagate = vi.fn((): Operation[] => []);
+    const project = createProject({ tasks: [{ id: 1 }] }, { propagate });
+    expect(propagate).toHaveBeenLastCalledWith(expect.anything(), null);
+    project.transact((tx) => {
+      tx.tasks.update(1, { name: 'n' });
+    });
+    expect(propagate).toHaveBeenLastCalledWith(expect.anything(), [
+      { type: 'update', store: 'tasks', id: 1, changes: { name: 'n' } },
+    ]);
+  });
+
+  it('changes nothing when it throws', () => {
+    const project = createProject(
+      { tasks: [{ id: 1 }] },
+      {
+        propagate: (_, operations) => {
+          if (operations) throw new QuartzioError('broken');
+          return [];
+        },
+      },
+    );
+    const state = project.getState();
+    expect(() =>
+      project.transact((tx) => {
+        tx.tasks.update(1, { name: 'n' });
+      }),
+    ).toThrow('broken');
+    expect(project.getState()).toBe(state);
   });
 });

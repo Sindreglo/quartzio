@@ -3,6 +3,7 @@ import { QuartzioError } from '../util/errors';
 import { parseCivilDate, parseDateString, parseTimeOfDay } from '../util/parse';
 import { isTimeUnit, type TimeUnit } from '../util/time';
 import { assertTimeZone, type TimeZone } from '../util/zone';
+import { getScheduleGraph, sameDependencyEnds, shareDependencyEnds } from './graph';
 import { shareTreeIndex } from './tree';
 import type {
   Calendar,
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = deepFreeze({
   daysPerWeek: 5,
   daysPerMonth: 20,
   weekStartsOn: 1,
+  startDate: null,
 });
 
 const OFFICE_HOURS: readonly WorkingInterval[] = [{ start: '08:00', end: '16:00' }];
@@ -101,6 +103,8 @@ export function toTime(
   if (time < MIN_TIME || time > MAX_TIME) {
     throw new QuartzioError(`${owner}: "${field}" must be between the years 1000 and 9999.`);
   }
+  // Fractions of a millisecond would make working-time arithmetic (and so scheduling) inexact.
+  if (!Number.isInteger(time)) throw new QuartzioError(`${owner}: "${field}" must be whole milliseconds.`);
   return time;
 }
 
@@ -126,6 +130,12 @@ function toPercent(value: number | undefined, owner: string): number {
   return value;
 }
 
+function toBoolean(value: unknown, field: string, owner: string): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') throw new QuartzioError(`${owner}: "${field}" must be true or false.`);
+  return value;
+}
+
 function toUnit(value: TimeUnit | undefined, fallback: TimeUnit, field: string, owner: string): TimeUnit {
   if (value === undefined) return fallback;
   if (!isTimeUnit(value)) throw new QuartzioError(`${owner}: "${field}" is not a valid time unit.`);
@@ -145,6 +155,7 @@ export function normalizeTaskFields(input: TaskFieldsInput, owner: string, zone:
     duration: toDuration(input.duration, owner),
     durationUnit: toUnit(input.durationUnit, DEFAULT_DURATION_UNIT, 'durationUnit', owner),
     percentDone: toPercent(input.percentDone, owner),
+    manuallyScheduled: toBoolean(input.manuallyScheduled, 'manuallyScheduled', owner),
   };
 }
 
@@ -163,6 +174,9 @@ export function normalizeTaskChanges(
     changes.durationUnit = toUnit(input.durationUnit, DEFAULT_DURATION_UNIT, 'durationUnit', owner);
   }
   if (input.percentDone !== undefined) changes.percentDone = toPercent(input.percentDone, owner);
+  if (input.manuallyScheduled !== undefined) {
+    changes.manuallyScheduled = toBoolean(input.manuallyScheduled, 'manuallyScheduled', owner);
+  }
   return changes;
 }
 
@@ -242,8 +256,14 @@ function toPositive(value: unknown, field: string, max: number): number {
   return value;
 }
 
-/** Normalizes only the settings present in `input`. */
-export function normalizeSettingsChanges(input: ProjectSettingsInput): Partial<ProjectSettings> {
+/**
+ * Normalizes only the settings present in `input`. Date strings are read in `input.timeZone`, or `zone` (the
+ * project's current time zone) when the input doesn't change it.
+ */
+export function normalizeSettingsChanges(
+  input: ProjectSettingsInput,
+  zone: TimeZone = DEFAULT_SETTINGS.timeZone,
+): Partial<ProjectSettings> {
   const changes: { -readonly [K in keyof ProjectSettings]?: ProjectSettings[K] } = {};
   if (input.timeZone !== undefined) {
     assertTimeZone(input.timeZone);
@@ -266,6 +286,9 @@ export function normalizeSettingsChanges(input: ProjectSettingsInput): Partial<P
       );
     }
     changes.weekStartsOn = input.weekStartsOn;
+  }
+  if (input.startDate !== undefined) {
+    changes.startDate = toTime(input.startDate, 'startDate', 'Project settings', changes.timeZone ?? zone);
   }
   return changes;
 }
@@ -508,12 +531,18 @@ export function createProjectState(input: ProjectInput = {}, previous?: ProjectS
   const taskTable = reuseTable({ byId: tasks, order: taskOrder }, previous?.tasks);
   if (previous && sameTaskStructure(taskTable, previous.tasks)) shareTreeIndex(previous.tasks, taskTable);
 
-  return {
+  const dependencyTable = reuseTable({ byId: dependencies, order: dependencyOrder }, previous?.dependencies);
+  if (previous && sameDependencyEnds(dependencyTable, previous.dependencies)) {
+    shareDependencyEnds(previous.dependencies, dependencyTable);
+  }
+  const state: ProjectState = {
     settings,
     calendars: reuseTable({ byId: calendars, order: calendarOrder }, previous?.calendars),
     tasks: taskTable,
-    dependencies: reuseTable({ byId: dependencies, order: dependencyOrder }, previous?.dependencies),
+    dependencies: dependencyTable,
   };
+  getScheduleGraph(state); // rejects dependency cycles
+  return state;
 }
 
 /** Records touched by operations from outside; only these get full field validation. */
@@ -546,7 +575,11 @@ function assertValidSettings(settings: ProjectSettings): void {
  * Transactions keep these invariants by construction. Structure is checked in O(n); record fields only
  * for `touched` records (all records when omitted).
  */
-export function assertValidState(state: ProjectState, touched?: TouchedRecords): void {
+export function assertValidState(
+  state: ProjectState,
+  touched?: TouchedRecords,
+  { taskDates = true }: { taskDates?: boolean } = {},
+): void {
   const check = <R>(store: keyof Omit<TouchedRecords, 'settings'>, table: Table<R & { readonly id: Id }>) =>
     touched ? [...touched[store]].flatMap((id) => table.byId.get(id) ?? []) : [...table.byId.values()];
 
@@ -570,7 +603,7 @@ export function assertValidState(state: ProjectState, touched?: TouchedRecords):
       { id: task.id, parentId: task.parentId, ...normalizeTaskFields(task, owner, 'UTC') },
       owner,
     );
-    assertTaskDates(task);
+    if (taskDates) assertTaskDates(task);
   }
   assertTaskHierarchy(state.tasks.byId);
 
@@ -583,4 +616,6 @@ export function assertValidState(state: ProjectState, touched?: TouchedRecords):
       assertNormalized(dependency, { id, from, to, ...normalizeDependencyFields(dependency, owner) }, owner);
     }
   }
+  // Cycles, including ones through the hierarchy. Cached per structure, so field edits don't repeat it.
+  getScheduleGraph(state);
 }

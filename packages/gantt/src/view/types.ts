@@ -103,6 +103,10 @@ export interface GanttOptions {
 export interface GanttController {
   /** Returns the same object until the state changes, so it can back `useSyncExternalStore`. */
   getState: () => ViewState;
+  /**
+   * The first subscription also reports (through `onChange`, after a microtask) what scheduling changed in the
+   * initial data, so the app can keep the scheduled data.
+   */
   subscribe: (listener: (state: ViewState) => void) => () => void;
   /**
    * Updates options after creation. All options are validated first: an invalid one throws and changes

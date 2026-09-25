@@ -1,7 +1,7 @@
 import { createEmitter } from '../util/emitter';
 import { QuartzioError } from '../util/errors';
 import { Draft } from './draft';
-import { assertValidState, createProjectState } from './normalize';
+import { assertTaskDates, assertValidState, createProjectState } from './normalize';
 import { applyOperations } from './operations';
 import { toProjectData } from './serialize';
 import { createTransaction, type IdGenerator, type Transaction } from './transaction';
@@ -21,14 +21,24 @@ export interface PlannedChange {
 export interface ProjectOptions {
   /** Creates ids for records added without one. Defaults to `task-1`, `dependency-1`, ... */
   generateId?: IdGenerator;
+  /**
+   * Completes every change (transactions, `apply`, `load` and the initial data) with more operations, applied
+   * in the same change and included in its patch: this is how the scheduler writes computed dates back.
+   * Gets the operations that were applied, or `null` for loaded data. Must be pure, and return nothing for a
+   * state it already completed; if it throws, the change is rejected.
+   */
+  propagate?: (state: ProjectState, operations: readonly Operation[] | null) => readonly Operation[];
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound.
 export interface Project {
   getState: () => ProjectState;
   subscribe: (listener: (change: ProjectChange) => void) => () => void;
-  /** Replaces the whole project. */
-  load: (input: ProjectInput) => void;
+  /**
+   * Replaces the whole project. Returns the operations `propagate` added to the loaded data (e.g. computed
+   * dates), or `null` when it added none.
+   */
+  load: (input: ProjectInput) => Patch | null;
   /**
    * Runs `fn` against a draft and commits all its changes at once, emitting a single change.
    * If `fn` throws, nothing is changed. Returns `null` when nothing changed.
@@ -72,7 +82,29 @@ function isThenable(value: unknown): boolean {
 export function createProject(input: ProjectInput = {}, options: ProjectOptions = {}): Project {
   const changes = createEmitter<ProjectChange>();
   const generateId = options.generateId ?? createDefaultIdGenerator();
-  let state = createProjectState(input);
+  const { propagate } = options;
+
+  /** Applies what `propagate` adds to `base`, returning the state and a patch relative to `base`. */
+  const complete = (
+    base: ProjectState,
+    applied: readonly Operation[] | null,
+  ): { state: ProjectState; patch: Patch | null } => {
+    const extra = propagate?.(base, applied) ?? [];
+    if (extra.length === 0) return { state: base, patch: null };
+    const result = applyOperations(base, extra);
+    assertValidState(result.state, result.touched);
+    return { state: result.state, patch: { operations: [...extra], inverse: result.inverse } };
+  };
+  /** Joins a change and what propagate added to it into one patch. */
+  const join = (first: Patch, second: Patch | null): Patch =>
+    second
+      ? {
+          operations: [...first.operations, ...second.operations],
+          inverse: [...second.inverse, ...first.inverse],
+        }
+      : first;
+
+  let state = complete(createProjectState(input), null).state;
   let running = false;
 
   const commit = (next: ProjectState, patch: Patch | null): void => {
@@ -103,9 +135,11 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
       running = false;
     }
     if (recorder.operations.length === 0) return null;
+    const completed = complete(recorder.draft.finish(), recorder.operations);
+    recorder.validateResult(completed.state);
     return {
-      state: recorder.draft.finish(),
-      patch: { operations: recorder.operations, inverse: recorder.inverse },
+      state: completed.state,
+      patch: join({ operations: recorder.operations, inverse: recorder.inverse }, completed.patch),
     };
   };
 
@@ -114,7 +148,9 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
     subscribe: (listener) => changes.subscribe(listener),
     load(nextInput) {
       assertNotRunning();
-      commit(createProjectState(nextInput, state), null);
+      const completed = complete(createProjectState(nextInput, state), null);
+      commit(completed.state, null);
+      return completed.patch;
     },
     plan,
     transact(fn) {
@@ -127,9 +163,15 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
       assertNotRunning();
       if (operations.length === 0) return null;
       const result = applyOperations(state, operations);
-      assertValidState(result.state, result.touched);
-      const patch: Patch = { operations: [...operations], inverse: result.inverse };
-      commit(result.state, patch);
+      // End before start is checked after propagation, which can repair it (like transact does).
+      assertValidState(result.state, result.touched, { taskDates: false });
+      const completed = complete(result.state, operations);
+      for (const id of result.touched.tasks) {
+        const task = completed.state.tasks.byId.get(id);
+        if (task) assertTaskDates(task);
+      }
+      const patch = join({ operations: [...operations], inverse: result.inverse }, completed.patch);
+      commit(completed.state, patch);
       return patch;
     },
     toData: () => toProjectData(state),

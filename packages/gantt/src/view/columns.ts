@@ -1,7 +1,7 @@
 import { workingMsPerUnit } from '../calendar/duration';
 import type { WorkingCalendar } from '../calendar/workingCalendar';
 import type { ProjectSettings, Task } from '../data/types';
-import type { EffectiveDates } from '../scheduling/effective';
+import type { TaskDates } from './dates';
 import { QuartzioError } from '../util/errors';
 import { formatDate, formatDuration, formatEndDate, formatPercent } from './cells';
 
@@ -13,7 +13,7 @@ export interface CellContext {
   /** Whether the task has children (its dates then span its descendants). */
   readonly isParent: boolean;
   /** Computed display dates, or `null` for unscheduled tasks. */
-  readonly dates: EffectiveDates | null;
+  readonly dates: TaskDates | null;
   readonly settings: ProjectSettings;
   readonly locale: string | undefined;
   /** The project calendar, e.g. to measure working time. Absent if it can't be used. */

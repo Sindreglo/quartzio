@@ -3,6 +3,7 @@ import { BarsDemo } from './bars';
 import { BasicDemo } from './basic';
 import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
+import { SchedulingDemo } from './scheduling';
 import { TaskListDemo } from './task-list';
 import { TimeAxisDemo } from './timeaxis';
 
@@ -56,5 +57,12 @@ export const demos: Demo[] = [
     description:
       'Task bars with progress, summary bars for parents, milestones, the today line and non-working time from the project calendar.',
     Component: BarsDemo,
+  },
+  {
+    id: 'scheduling',
+    title: 'Scheduling',
+    description:
+      'Tasks start as soon as possible after the project start and their predecessors (FS, SS, FF, SF with lag); parents span their children; manually scheduled tasks keep their dates. Dates are written back into the data.',
+    Component: SchedulingDemo,
   },
 ];

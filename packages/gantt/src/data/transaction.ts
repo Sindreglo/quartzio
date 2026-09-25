@@ -19,12 +19,14 @@ import {
   type TaskFieldsInput,
 } from './normalize';
 import { applyOperation } from './operations';
+import { getScheduleGraph } from './graph';
 import { buildDraftTreeIndex, type DraftTreeIndex } from './tree';
 import type {
   Calendar,
   Dependency,
   Id,
   Operation,
+  ProjectState,
   ProjectSettings,
   ProjectSettingsInput,
   StoreName,
@@ -116,8 +118,13 @@ export interface TransactionRecorder {
   draft: Draft;
   operations: Operation[];
   inverse: Operation[];
-  /** Checks invariants that may be broken temporarily inside a transaction (e.g. end before start). */
+  /** Checks structural invariants once the transaction function is done (e.g. no dependency cycles). */
   validate: () => void;
+  /**
+   * Checks invariants that may be broken until the change is complete, on the final state (after propagation,
+   * which can repair them, e.g. a new start after the old end on a scheduled task).
+   */
+  validateResult: (state: ProjectState) => void;
   /** Makes every further use of the transaction throw. Called when the transaction function returns. */
   close: () => void;
 }
@@ -191,6 +198,34 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
     const version = draft.structureVersionOf('tasks');
     if (tree?.version !== version) tree = { version, index: buildDraftTreeIndex(tasks()) };
     return tree.index;
+  };
+
+  // Dependency ids per task (both ends), kept in step with adds and removals here and rebuilt after other
+  // structural changes, so removing many tasks doesn't scan every dependency each time.
+  let links: { version: number; byTask: Map<Id, Set<Id>> } | undefined;
+  const linksOf = (): Map<Id, Set<Id>> => {
+    const version = draft.structureVersionOf('dependencies');
+    if (links?.version !== version) {
+      const byTask = new Map<Id, Set<Id>>();
+      for (const dependency of dependencies().byId.values()) link(byTask, dependency, true);
+      links = { version, byTask };
+    }
+    return links.byTask;
+  };
+  const link = (byTask: Map<Id, Set<Id>>, dependency: Dependency, add: boolean): void => {
+    for (const taskId of [dependency.from, dependency.to]) {
+      let set = byTask.get(taskId);
+      if (!set) byTask.set(taskId, (set = new Set()));
+      if (add) set.add(dependency.id);
+      else set.delete(dependency.id);
+    }
+  };
+  // Applies a dependency add or remove and updates the links in place instead of invalidating them.
+  const applyLinked = (op: Operation, dependency: Dependency, add: boolean): void => {
+    const byTask = linksOf();
+    apply(op);
+    link(byTask, dependency, add);
+    if (links) links.version = draft.structureVersionOf('dependencies');
   };
 
   const requireTask = (id: Id): Task => {
@@ -282,6 +317,9 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       const owner = `Task "${String(id)}"`;
       assertNoStructureFields(input, owner);
       const changes = changedFields(task, normalizeTaskChanges(input, owner, settings().timeZone));
+      // A new end before the start is an error. (A new start after the old end isn't: scheduling moves the
+      // end, keeping the duration; see validateResult.)
+      if ('endDate' in changes) assertTaskDates({ ...task, ...changes });
       if (Object.keys(changes).length > 0) apply({ type: 'update', store: 'tasks', id, changes });
       touchedTasks.add(id);
     },
@@ -300,16 +338,20 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
 
     remove(id) {
       requireTask(id);
-      const subtree = [id, ...treeIndex().descendants(id)];
-      const removed = new Set(subtree);
+      const index = treeIndex();
+      const descendants = index.descendants(id);
+      const subtree = [id, ...descendants];
       // Dependencies first, then tasks leaf-first, so the inverse re-adds parents before children
       // and tasks before the dependencies that reference them.
-      for (const dependency of [...dependencies().byId.values()]) {
-        if (removed.has(dependency.from) || removed.has(dependency.to)) {
-          apply({ type: 'remove', store: 'dependencies', id: dependency.id });
-        }
+      const byTask = linksOf();
+      const touching = new Set(subtree.flatMap((taskId) => [...(byTask.get(taskId) ?? [])]));
+      for (const dependencyId of touching) {
+        const dependency = requireDependency(dependencyId);
+        applyLinked({ type: 'remove', store: 'dependencies', id: dependencyId }, dependency, false);
       }
-      for (const taskId of subtree.reverse()) apply({ type: 'remove', store: 'tasks', id: taskId });
+      for (const taskId of [...subtree].reverse()) apply({ type: 'remove', store: 'tasks', id: taskId });
+      index.removeSubtree(id, descendants);
+      if (tree) tree.version = draft.structureVersionOf('tasks');
     },
   };
 
@@ -322,7 +364,11 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       const owner = `Dependency "${String(id)}"`;
       assertDependencyEnds(tasks().byId, from, to, owner);
       const record: Dependency = { id, from, to, ...normalizeDependencyFields(fields, owner) };
-      apply({ type: 'add', store: 'dependencies', record, index: dependencies().order.length });
+      applyLinked(
+        { type: 'add', store: 'dependencies', record, index: dependencies().order.length },
+        record,
+        true,
+      );
       return record;
     },
 
@@ -336,8 +382,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
     },
 
     remove(id) {
-      requireDependency(id);
-      apply({ type: 'remove', store: 'dependencies', id });
+      applyLinked({ type: 'remove', store: 'dependencies', id }, requireDependency(id), false);
     },
   };
 
@@ -373,7 +418,7 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
   const settingsTransaction: SettingsTransaction = {
     get: settings,
     update(input) {
-      const changes = changedFields(settings(), normalizeSettingsChanges(input));
+      const changes = changedFields(settings(), normalizeSettingsChanges(input, settings().timeZone));
       if (changes.calendarId != null && !calendars().byId.has(changes.calendarId)) {
         throw new QuartzioError(`Project settings: calendar "${String(changes.calendarId)}" does not exist.`);
       }
@@ -395,8 +440,13 @@ export function createTransaction(draft: Draft, generateId: IdGenerator): Transa
       return [...inverse].reverse();
     },
     validate: () => {
+      // Dependency cycles, also through the hierarchy (a move can create one). Cached when nothing structural
+      // changed.
+      getScheduleGraph(draft.finish());
+    },
+    validateResult: (state) => {
       for (const id of touchedTasks) {
-        const task = draft.read('tasks').byId.get(id);
+        const task = state.tasks.byId.get(id);
         if (task) assertTaskDates(task);
       }
     },

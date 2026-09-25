@@ -38,7 +38,9 @@ export function Gantt(props: GanttProps): ReactElement {
   const controlled = 'data' in props;
 
   // The controller holds no timers or external resources yet, so it is not destroyed on unmount:
-  // StrictMode's mount → unmount → mount would otherwise leave us with a destroyed controller.
+  // StrictMode's mount → unmount → mount would otherwise leave us with a destroyed controller. (Its one deferred
+  // report, of the initial scheduling, only starts once it's subscribed to, so a controller StrictMode creates
+  // and throws away never reports.)
   const [gantt] = useState<GanttController>(() =>
     createGantt({
       ...(controlled ? { data } : { defaultData }),

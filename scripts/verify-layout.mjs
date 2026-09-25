@@ -13,7 +13,7 @@ const OUT = join(ROOT, '.layout');
 const DEMOS =
   process.argv.slice(2).length > 0
     ? process.argv.slice(2)
-    : ['bars', 'task-list', 'task-list:big', 'timeaxis'];
+    : ['bars', 'scheduling', 'task-list', 'task-list:big', 'timeaxis'];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
 const VARIANTS = [{ width: 1400 }, { width: 700 }, { width: 700, classic: true }];
@@ -133,21 +133,24 @@ const CHECKS = `(() => {
       }
     }
   }
-  // The bars demo only has whole-day dates, so every visible bar starts on a day (tick) boundary.
+  // In the bars demo (automatically scheduled, day ticks, office hours 08:00–16:00), every visible bar starts at
+  // 00:00, 08:00 or 16:00 of a day: checks bar positions against the header. (Not the scheduling demo: its manual
+  // task starts at 12:00.)
   if (location.hash === '#bars' && scroller) {
     const view = scroller.getBoundingClientRect();
-    const ticks = [...document.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].map(
-      (cell) => cell.getBoundingClientRect().left,
-    );
+    const ticks = [...document.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].flatMap((cell) => {
+      const { left, width } = cell.getBoundingClientRect();
+      return [left, left + width / 3, left + (2 * width) / 3];
+    });
     const bars = [...document.querySelectorAll('.qz-bar')];
-    if (bars.length === 0) problems.push('the bars demo shows no bars');
+    if (bars.length === 0) problems.push('the demo shows no bars');
     for (const bar of bars) {
       const rect = bar.getBoundingClientRect();
       // A milestone's left edge is the center of its diamond.
       const x = bar.classList.contains('qz-bar--milestone') ? rect.left + rect.width / 2 : rect.left;
       if (x < view.left || x > view.right || rect.top > view.bottom) continue;
       if (!ticks.some((tick) => Math.abs(tick - x) <= 1)) {
-        problems.push('bar "' + bar.title + '" does not start on a day boundary (x = ' + x + ')');
+        problems.push('bar "' + bar.title + '" does not start at 00:00, 08:00 or 16:00 (x = ' + x + ')');
         break;
       }
     }

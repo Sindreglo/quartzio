@@ -72,8 +72,9 @@ export type { TimeZone, WallTime, ZonedWallTime } from './util/zone';
 export { addUnits, fromWallTime, isoWeek, isValidTimeZone, startOfUnit, toWallTime } from './util/zone';
 
 // Scheduling
-export type { EffectiveDates } from './scheduling/effective';
-export { computeEffectiveDates } from './scheduling/effective';
+export { scheduleProject } from './scheduling/schedule';
+export type { TaskDates } from './view/dates';
+export { taskDates } from './view/dates';
 
 // View
 export type { Bar, BarKind } from './view/bars';

@@ -2,7 +2,7 @@ import { getWorkingCalendar } from '../calendar/project';
 import type { WorkingCalendar } from '../calendar/workingCalendar';
 import { getTreeIndex } from '../data/tree';
 import type { Id, ProjectState, Task } from '../data/types';
-import { computeEffectiveDates, type EffectiveDates } from '../scheduling/effective';
+import { taskDates, type TaskDates } from './dates';
 import type { TimeAxis } from '../timeaxis/timeAxis';
 import { computeBar, sameBar, type Bar } from './bars';
 import type { ResolvedColumns } from './columns';
@@ -22,7 +22,7 @@ export interface Row {
   readonly hasChildren: boolean;
   readonly expanded: boolean;
   /** Computed display dates, or `null` for unscheduled tasks. */
-  readonly dates: EffectiveDates | null;
+  readonly dates: TaskDates | null;
   /** Cell texts, one per column. */
   readonly cells: readonly string[];
   /** The task's bar on the timeline, or `null` for unscheduled tasks. */
@@ -82,7 +82,7 @@ function visibleRows(project: ProjectState, collapsed: ReadonlySet<Id>): Visible
 const sameCells = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((text, i) => text === b[i]);
 
-const sameDates = (a: EffectiveDates | null, b: EffectiveDates | null) =>
+const sameDates = (a: TaskDates | null, b: TaskDates | null) =>
   a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end);
 
 export function createRowsView(): { rowsFor: (input: RowsInput) => RowsState } {
@@ -133,7 +133,6 @@ export function createRowsView(): { rowsFor: (input: RowsInput) => RowsState } {
     const first = clamp(Math.floor((viewport.scrollTop - height) / rowHeight));
     const last = clamp(Math.ceil((viewport.scrollTop + 2 * height) / rowHeight));
     const tree = getTreeIndex(project.tasks);
-    const dates = computeEffectiveDates(project);
     const calendar = calendarFor(project);
     const rows = new Map<Id, Row>();
     const items: Row[] = [];
@@ -142,7 +141,7 @@ export function createRowsView(): { rowsFor: (input: RowsInput) => RowsState } {
       const id = visible.ids[index] as Id;
       const task = project.tasks.byId.get(id) as Task;
       const hasChildren = !tree.isLeaf(id);
-      const rowDates = dates.get(id) ?? null;
+      const rowDates = taskDates(task);
       const context = {
         task,
         isParent: hasChildren,

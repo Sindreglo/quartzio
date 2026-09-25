@@ -65,10 +65,18 @@ describe('patches', () => {
 
     for (let i = 0; i < 300; i++) {
       const before = project.toData();
-      const patch = project.transact((tx) => {
-        const edits = 1 + Math.floor(random() * 3);
-        for (let e = 0; e < edits; e++) randomEdit(tx, random);
-      });
+      let patch: Patch | null;
+      try {
+        patch = project.transact((tx) => {
+          const edits = 1 + Math.floor(random() * 3);
+          for (let e = 0; e < edits; e++) randomEdit(tx, random);
+        });
+      } catch (error) {
+        // Random dependencies sometimes form a cycle; the whole transaction is rejected, which is fine here.
+        if (!(error instanceof QuartzioError)) throw error;
+        expect(project.toData()).toEqual(before);
+        continue;
+      }
       if (patch) history.push({ before, patch, after: project.toData() });
     }
 

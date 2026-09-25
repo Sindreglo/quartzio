@@ -1,4 +1,5 @@
 import { createProject } from '../data/project';
+import { scheduleProject } from '../scheduling/schedule';
 import { getTreeIndex } from '../data/tree';
 import type { Id, ProjectState } from '../data/types';
 import { createEmitter } from '../util/emitter';
@@ -108,8 +109,10 @@ const sameView = (a: ViewOptions, b: ViewOptions) =>
 export function createGantt(options: GanttOptions = {}): GanttController {
   let view = resolveViewOptions(options);
   const controlled = 'data' in options;
-  const project = createProject((controlled ? options.data : options.defaultData) ?? {});
-  const binding = createDataBinding(project, controlled, options.data, options.onChange);
+  // Scheduling writes computed dates back into the data (ADR 0008).
+  const project = createProject({}, { propagate: scheduleProject });
+  const initialPatch = project.load((controlled ? options.data : options.defaultData) ?? {});
+  const binding = createDataBinding(project, controlled, options.data, options.onChange, initialPatch);
   const timelineView = createTimelineView();
   const rowsView = createRowsView();
   const nonWorkingView = createNonWorkingView();
@@ -192,7 +195,10 @@ export function createGantt(options: GanttOptions = {}): GanttController {
 
   return {
     getState: () => state,
-    subscribe: (listener) => changes.subscribe(listener),
+    subscribe: (listener) => {
+      binding.start(); // a renderer took this controller into use: report the initial scheduling
+      return changes.subscribe(listener);
+    },
 
     setOptions(next) {
       if (destroyed) return;
@@ -264,6 +270,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
 
     destroy() {
       destroyed = true;
+      binding.destroy();
       unsubscribeProject();
       changes.clear();
     },

@@ -1,4 +1,4 @@
-import { type ProjectInput, VIEW_PRESETS } from '@quartzio/gantt';
+import { type ProjectInput, type TaskInput, VIEW_PRESETS } from '@quartzio/gantt';
 import { Gantt } from '@quartzio/gantt-react';
 import { useMemo, useState } from 'react';
 
@@ -19,26 +19,41 @@ const aroundToday = (): ProjectInput => ({
       name: 'Planning',
       children: [
         { id: 'scope', name: 'Define scope', startDate: fromMonday(-7), duration: 3, percentDone: 100 },
-        { id: 'budget', name: 'Approve budget', startDate: fromMonday(-4), duration: 2, percentDone: 60 },
+        { id: 'budget', name: 'Approve budget', duration: 2, percentDone: 60 },
       ],
     },
     {
       id: 'build',
       name: 'Build',
       children: [
-        { id: 'design', name: 'Design', startDate: fromMonday(0), duration: 5, percentDone: 30 },
-        { id: 'develop', name: 'Develop', startDate: fromMonday(7), duration: 10 },
-        { id: 'test', name: 'Test', startDate: fromMonday(21), duration: 5 },
+        { id: 'design', name: 'Design', duration: 5, percentDone: 30 },
+        { id: 'develop', name: 'Develop', duration: 10 },
+        { id: 'test', name: 'Test', duration: 5 },
       ],
     },
-    { id: 'launch', name: 'Launch', startDate: fromMonday(28), duration: 0 },
+    { id: 'launch', name: 'Launch', duration: 0 },
+  ],
+  // Scheduled from the first task's start: design lands on this week, around the today line.
+  dependencies: [
+    { id: 'd1', from: 'scope', to: 'budget' },
+    { id: 'd2', from: 'budget', to: 'design' },
+    { id: 'd3', from: 'design', to: 'develop' },
+    { id: 'd4', from: 'develop', to: 'test' },
+    { id: 'd5', from: 'test', to: 'launch' },
   ],
 });
 
-// The edge cases use a fixed axis (12–26 October 2026), so some bars start before or end after it.
+// The edge cases use a fixed axis (12–26 October 2026), so some bars start before or end after it. They're
+// manually scheduled, so they keep the dates given here instead of starting as soon as possible.
 const EDGE_AXIS = { startDate: '2026-10-12', endDate: '2026-10-26' };
+const manual = (tasks: TaskInput[]): TaskInput[] =>
+  tasks.map((task) => ({
+    ...task,
+    manuallyScheduled: true,
+    ...(task.children ? { children: manual([...task.children]) } : {}),
+  }));
 const edgeCases = (): ProjectInput => ({
-  tasks: [
+  tasks: manual([
     { id: 'before', name: 'Starts before the axis', startDate: '2026-10-01', endDate: '2026-10-14' },
     { id: 'after', name: 'Ends after the axis', startDate: '2026-10-22', endDate: '2026-11-20' },
     { id: 'across', name: 'Covers the whole axis', startDate: '2026-01-01', endDate: '2027-12-31' },
@@ -65,7 +80,7 @@ const edgeCases = (): ProjectInput => ({
       name: 'Parent of an undated child',
       children: [{ id: 'c', name: 'Undated child' }],
     },
-  ],
+  ]),
 });
 
 const DATASETS = { today: aroundToday, edge: edgeCases, empty: (): ProjectInput => ({}) };

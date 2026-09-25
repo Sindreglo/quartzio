@@ -19,13 +19,16 @@ export interface TreeIndex {
 }
 
 /**
- * The hierarchy of a table that is still changing (a transaction draft). Added tasks are inserted in place,
- * so adding many tasks doesn't rebuild it each time. No positions: they shift with every add (use `order`).
+ * The hierarchy of a table that is still changing (a transaction draft). Added and removed tasks are updated in
+ * place, so adding or removing many tasks doesn't rebuild it each time. No positions: they shift with every
+ * change (use `order`).
  */
 export interface DraftTreeIndex extends Omit<TreeIndex, 'position' | 'flatten'> {
   /** Like `children`, without copying: only valid until the next insert. */
   childrenView: (parentId: Id | null) => readonly Id[];
   insert: (id: Id, parentId: Id | null, siblingIndex: number) => void;
+  /** Removes a task with all its descendants (given, so they aren't walked twice). */
+  removeSubtree: (id: Id, descendants: readonly Id[]) => void;
 }
 
 const cache = new WeakMap<Table<Task>, TreeIndex>();
@@ -85,6 +88,16 @@ export function buildDraftTreeIndex(tasks: Table<Task>): DraftTreeIndex {
       const siblings = structure.childrenByParent.get(parentId);
       if (siblings) siblings.splice(siblingIndex, 0, id);
       else structure.childrenByParent.set(parentId, [id]);
+    },
+    removeSubtree: (id, descendants) => {
+      // Only the root leaves a sibling list; the descendants' lists go with them.
+      const siblings = structure.childrenByParent.get(structure.parents.get(id) ?? null);
+      const at = siblings?.indexOf(id) ?? -1;
+      if (at !== -1) siblings?.splice(at, 1);
+      for (const removed of [id, ...descendants]) {
+        structure.parents.delete(removed);
+        structure.childrenByParent.delete(removed);
+      }
     },
   };
 }

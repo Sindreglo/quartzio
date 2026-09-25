@@ -1,5 +1,5 @@
 import type { Task } from '../data/types';
-import type { EffectiveDates } from '../scheduling/effective';
+import type { TaskDates } from './dates';
 import type { TimeAxis } from '../timeaxis/timeAxis';
 
 export type BarKind = 'task' | 'summary' | 'milestone';
@@ -26,7 +26,7 @@ export const MIN_BAR_WIDTH = 2;
 
 export function computeBar(
   task: Task,
-  dates: EffectiveDates | null,
+  dates: TaskDates | null,
   isParent: boolean,
   axis: TimeAxis,
 ): Bar | null {

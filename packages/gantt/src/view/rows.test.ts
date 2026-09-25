@@ -5,6 +5,7 @@ import { createGantt } from './createGantt';
 
 const oslo = (day: number, hour = 0) => Date.UTC(2026, 9, day, hour - 2);
 
+// Leaves are manually scheduled: these tests are about rows and cells, with dates as given.
 const project: ProjectInput = {
   settings: { timeZone: 'Europe/Oslo' },
   tasks: [
@@ -12,11 +13,11 @@ const project: ProjectInput = {
       id: 'plan',
       name: 'Planning',
       children: [
-        { id: 'scope', name: 'Scope', startDate: oslo(5, 8), endDate: oslo(7, 16) },
-        { id: 'budget', name: 'Budget', startDate: oslo(8, 8), duration: 2 },
+        { id: 'scope', name: 'Scope', startDate: oslo(5, 8), endDate: oslo(7, 16), manuallyScheduled: true },
+        { id: 'budget', name: 'Budget', startDate: oslo(8, 8), duration: 2, manuallyScheduled: true },
       ],
     },
-    { id: 'launch', name: 'Launch', startDate: oslo(12, 8) },
+    { id: 'launch', name: 'Launch', startDate: oslo(12, 8), manuallyScheduled: true },
     { id: 'idea', name: 'Unscheduled idea' },
   ],
 };

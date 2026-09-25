@@ -9,14 +9,16 @@ const DATASETS = {
   big: (): ProjectInput => generateProject(1000, 9),
   edge: (): ProjectInput => ({
     settings: { timeZone: 'Europe/Oslo' },
+    // Manually scheduled, so the dates stay as given (e.g. only an end date).
     tasks: [
       {
         id: 'long',
         name: 'A task with a very long name that does not fit in the column and should be cut off with an ellipsis',
         startDate: '2026-10-05',
         duration: 2,
+        manuallyScheduled: true,
       },
-      { id: 'end-only', name: 'Only an end date', endDate: '2026-10-09T16:00' },
+      { id: 'end-only', name: 'Only an end date', endDate: '2026-10-09T16:00', manuallyScheduled: true },
       { id: 'unscheduled', name: 'Unscheduled (no dates)' },
       {
         id: 'empty-parent',

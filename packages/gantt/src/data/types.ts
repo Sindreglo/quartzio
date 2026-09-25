@@ -17,6 +17,11 @@ export interface Task {
   readonly durationUnit: TimeUnit;
   /** 0–100 */
   readonly percentDone: number;
+  /**
+   * Uses its own dates: not moved by predecessors, and (for parents) not rolled up from its children. Still a
+   * predecessor for others. Otherwise the task is scheduled automatically, as soon as possible.
+   */
+  readonly manuallyScheduled: boolean;
 }
 
 /** Finish-to-start, start-to-start, finish-to-finish, start-to-finish. */
@@ -71,6 +76,11 @@ export interface ProjectSettings {
   readonly daysPerMonth: number;
   /** 0 = Sunday … 6 = Saturday. */
   readonly weekStartsOn: number;
+  /**
+   * Project start: automatically scheduled tasks start here at the earliest. When `null`, it's set to the
+   * earliest task start the first time the project is scheduled.
+   */
+  readonly startDate: number | null;
 }
 
 // --- Input: what users may pass in. Looser than the stored records. ---
@@ -92,6 +102,7 @@ export interface TaskInput {
   duration?: number | null;
   durationUnit?: TimeUnit;
   percentDone?: number;
+  manuallyScheduled?: boolean;
 }
 
 export interface DependencyInput {
@@ -120,7 +131,12 @@ export interface CalendarInput {
   exceptions?: readonly CalendarExceptionInput[];
 }
 
-export type ProjectSettingsInput = { -readonly [K in keyof ProjectSettings]?: ProjectSettings[K] };
+export type ProjectSettingsInput = {
+  -readonly [K in Exclude<keyof ProjectSettings, 'startDate'>]?: ProjectSettings[K];
+} & {
+  /** Read in the project's time zone (the one in the same input, if given). */
+  startDate?: DateInput | null;
+};
 
 /** Tasks may be a flat list with `parentId`, nested via `children`, or a mix. */
 export interface ProjectInput {

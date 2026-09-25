@@ -253,6 +253,36 @@ describe('the tree inside a transaction', () => {
     expect(['a', 'b', 'c'].map((id) => undone.position(id))).toEqual([0, 1, 2]);
   });
 
+  it('removes subtrees with their dependencies, mixed with adds, moves and new dependencies', () => {
+    const project = createProject({
+      tasks: [{ id: 'p', children: [{ id: 'p1' }, { id: 'p2' }] }, { id: 'a' }, { id: 'b' }, { id: 'c' }],
+      dependencies: [
+        { id: 'ab', from: 'a', to: 'b' },
+        { id: 'p1c', from: 'p1', to: 'c' },
+        { id: 'bc', from: 'b', to: 'c' },
+      ],
+    });
+    project.transact((tx) => {
+      tx.tasks.remove('a');
+      tx.dependencies.add({ id: 'cb', from: 'p2', to: 'b' });
+      tx.tasks.add({ id: 'p3' }, { parentId: 'p' });
+      tx.dependencies.add({ id: 'p3b', from: 'p3', to: 'b' });
+      tx.tasks.remove('p1');
+      tx.tasks.move('c', { parentId: 'p', index: 0 });
+      tx.tasks.remove('p3');
+      expect(tx.tasks.children('p')).toEqual(['c', 'p2']);
+    });
+    const state = project.getState();
+    expect(getTreeIndex(state.tasks).flatten()).toEqual(['p', 'c', 'p2', 'b']);
+    expect([...state.dependencies.byId.keys()]).toEqual(['bc', 'cb']);
+    // Removing a parent removes its subtree and every dependency touching it, in one go.
+    project.transact((tx) => {
+      tx.tasks.remove('p');
+    });
+    expect([...project.getState().tasks.byId.keys()]).toEqual(['b']);
+    expect(project.getState().dependencies.byId.size).toBe(0);
+  });
+
   it('returns a snapshot from children(), not a list that changes with later adds', () => {
     const project = createProject({ tasks: [{ id: 'p' }] });
     project.transact((tx) => {

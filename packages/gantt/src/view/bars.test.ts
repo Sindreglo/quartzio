@@ -6,6 +6,7 @@ import { createGantt } from './createGantt';
 // Oslo is UTC+2 in October 2026: local midnight = 22:00 UTC the day before.
 const oslo = (day: number, hour = 0) => Date.UTC(2026, 9, day, hour - 2);
 
+// Leaves are manually scheduled: these tests are about drawing, with dates as given.
 const project: ProjectInput = {
   settings: { timeZone: 'Europe/Oslo' },
   tasks: [
@@ -13,11 +14,18 @@ const project: ProjectInput = {
       id: 'plan',
       name: 'Planning',
       children: [
-        { id: 'scope', name: 'Scope', startDate: oslo(5), endDate: oslo(8), percentDone: 50 },
-        { id: 'budget', name: 'Budget', startDate: oslo(8), endDate: oslo(10) },
+        {
+          id: 'scope',
+          name: 'Scope',
+          startDate: oslo(5),
+          endDate: oslo(8),
+          percentDone: 50,
+          manuallyScheduled: true,
+        },
+        { id: 'budget', name: 'Budget', startDate: oslo(8), endDate: oslo(10), manuallyScheduled: true },
       ],
     },
-    { id: 'launch', name: 'Launch', startDate: oslo(12) },
+    { id: 'launch', name: 'Launch', startDate: oslo(12), manuallyScheduled: true },
     { id: 'idea', name: 'Idea' },
   ],
 };
@@ -154,7 +162,7 @@ describe('bars', () => {
     const g = createGantt({
       defaultData: {
         settings: { timeZone: 'Africa/Cairo' },
-        tasks: [{ id: 1, startDate: '2026-04-29', endDate: '2026-04-30' }],
+        tasks: [{ id: 1, startDate: '2026-04-29', endDate: '2026-04-30', manuallyScheduled: true }],
       },
       preset: 'weekAndDay',
       // Friday 24 April 2026 starts at 01:00 in Cairo (00:00 doesn't exist).

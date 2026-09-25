@@ -369,3 +369,99 @@ describe('createGantt', () => {
     });
   });
 });
+
+describe('scheduling', () => {
+  // b depends on a; both unscheduled in the input (b's start is ignored: tasks start as soon as possible).
+  const input: ProjectInput = {
+    settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+    tasks: [
+      { id: 'a', duration: 2 },
+      { id: 'b', duration: 1, startDate: '2026-11-01' },
+    ],
+    dependencies: [{ id: 'ab', from: 'a', to: 'b' }],
+  };
+  const MON_08 = Date.UTC(2026, 9, 5, 8);
+  const WED_08 = Date.UTC(2026, 9, 7, 8);
+  const flush = () => Promise.resolve();
+
+  it('shows scheduled dates, and reports what scheduling changed after creation, not during it', async () => {
+    const onChange = vi.fn();
+    const gantt = createGantt({ defaultData: input, onChange });
+    expect(gantt.getState().project.tasks.byId.get('b')?.startDate).toBe(WED_08);
+    // Reported once a renderer subscribes (so controllers React creates and throws away never report).
+    await flush();
+    expect(onChange).not.toHaveBeenCalled();
+    gantt.subscribe(() => undefined);
+    expect(onChange).not.toHaveBeenCalled();
+    await flush();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const change = onChange.mock.calls[0]?.[0] as GanttDataChange;
+    expect(change.data.tasks.find((t) => t.id === 'a')?.startDate).toBe(MON_08);
+    expect(applyPatch(createProject(input).toData(), change.patch)).toEqual(change.data);
+  });
+
+  it('shows controlled data scheduled, and stops reporting once the scheduled data comes back', async () => {
+    const onChange = vi.fn();
+    const gantt = createGantt({ data: input, onChange });
+    gantt.subscribe(() => undefined);
+    expect(gantt.getState().project.tasks.byId.get('b')?.startDate).toBe(WED_08);
+    await flush();
+    const { data } = onChange.mock.calls[0]?.[0] as GanttDataChange;
+    const state = gantt.getState();
+    gantt.setOptions({ data });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(gantt.getState().project).toBe(state.project);
+    // New unscheduled data is reported right away.
+    gantt.setOptions({
+      data: {
+        ...input,
+        tasks: [
+          { id: 'a', duration: 3 },
+          { id: 'b', duration: 1 },
+        ],
+      },
+    });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    // A copy of scheduled data (not the same object) needs no change.
+    const copy = JSON.parse(
+      JSON.stringify((onChange.mock.calls[1]?.[0] as GanttDataChange).data),
+    ) as ProjectData;
+    gantt.setOptions({ data: copy });
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('includes pushed successors in the change an edit reports', () => {
+    const onChange = vi.fn();
+    const gantt = createGantt({ defaultData: input, onChange });
+    gantt.transact((tx) => {
+      tx.tasks.update('a', { duration: 3 });
+    });
+    const change = onChange.mock.calls.at(-1)?.[0] as GanttDataChange;
+    expect(change.data.tasks.find((t) => t.id === 'b')?.startDate).toBe(Date.UTC(2026, 9, 8, 8));
+  });
+
+  it('skips the initial report when an edit reports first, or after destroy', async () => {
+    const onChange = vi.fn();
+    const edited = createGantt({ defaultData: input, onChange });
+    edited.subscribe(() => undefined);
+    edited.transact((tx) => {
+      tx.tasks.update('a', { name: 'A' });
+    });
+    const destroyed = createGantt({ defaultData: input, onChange });
+    destroyed.subscribe(() => undefined);
+    destroyed.destroy();
+    await flush();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports the initial scheduling when invalid data is rejected before it', async () => {
+    const onChange = vi.fn();
+    const gantt = createGantt({ data: input, onChange });
+    gantt.subscribe(() => undefined);
+    expect(() => {
+      gantt.setOptions({ data: { tasks: [{ id: 1, duration: -1 }] } });
+    }).toThrow(QuartzioError);
+    await flush();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});

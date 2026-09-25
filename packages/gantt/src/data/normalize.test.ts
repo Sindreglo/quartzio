@@ -22,7 +22,21 @@ describe('createProjectState', () => {
       duration: null,
       durationUnit: 'day',
       percentDone: 0,
+      manuallyScheduled: false,
     });
+  });
+
+  it('accepts manuallyScheduled as a boolean only', () => {
+    expect(
+      createProjectState({ tasks: [{ id: 1, manuallyScheduled: true }] }).tasks.byId.get(1),
+    ).toMatchObject({
+      manuallyScheduled: true,
+    });
+    for (const value of ['yes', 1, null]) {
+      expect(() => createProjectState({ tasks: [{ id: 1, manuallyScheduled: value as never }] })).toThrow(
+        /manuallyScheduled/,
+      );
+    }
   });
 
   it('converts Date values to epoch milliseconds', () => {
@@ -104,7 +118,15 @@ describe('createProjectState', () => {
         daysPerWeek: 5,
         daysPerMonth: 20,
         weekStartsOn: 1,
+        startDate: null,
       });
+    });
+
+    it('reads the project start in the project time zone, and accepts null', () => {
+      const oslo = createProjectState({ settings: { timeZone: 'Europe/Oslo', startDate: '2026-01-05' } });
+      expect(oslo.settings.startDate).toBe(Date.UTC(2026, 0, 4, 23));
+      expect(createProjectState({ settings: { startDate: null } }).settings.startDate).toBeNull();
+      expect(createProjectState({ settings: { startDate: new Date(JAN_5) } }).settings.startDate).toBe(JAN_5);
     });
 
     it.each([
@@ -113,6 +135,9 @@ describe('createProjectState', () => {
       [{ daysPerWeek: 8 }, /daysPerWeek/],
       [{ weekStartsOn: 7 }, /weekStartsOn/],
       [{ calendarId: 'missing' }, /does not exist/],
+      [{ startDate: 'soon' }, /startDate/],
+      [{ startDate: Number.NaN }, /startDate/],
+      [{ startDate: Date.UTC(20_000, 0, 1) }, /startDate/],
     ])('rejects %j', (settings, message) => {
       expect(() => createProjectState({ settings })).toThrow(message);
     });
@@ -270,6 +295,15 @@ describe('createProjectState', () => {
   });
 
   describe('review regressions (4a)', () => {
+    it('rejects epoch milliseconds that are not whole numbers', () => {
+      expect(() => createProjectState({ tasks: [{ id: 1, startDate: JAN_5 + 0.5 }] })).toThrow(
+        /whole milliseconds/,
+      );
+      expect(() => createProjectState({ settings: { startDate: JAN_5 + 0.25 } })).toThrow(
+        /whole milliseconds/,
+      );
+    });
+
     it('rejects dates outside the years 1000–9999', () => {
       expect(() => createProjectState({ tasks: [{ id: 1, endDate: Date.UTC(20260, 0, 1) }] })).toThrow(
         /1000 and 9999/,

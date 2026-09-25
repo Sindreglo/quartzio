@@ -32,7 +32,10 @@ export function applyOperation(draft: Draft, op: Operation): Operation {
   if (op.type === 'update' && (typeof op.changes !== 'object' || (op.changes as unknown) === null)) {
     throw new QuartzioError(`Cannot update ${store} "${String(op.id)}": "changes" must be an object.`);
   }
-  if (op.type !== 'update' || 'parentId' in op.changes) draft.markStructure(store);
+  // Structure: records added, removed or moved, a task's parent, or a dependency's ends.
+  if (op.type !== 'update' || 'parentId' in op.changes || 'from' in op.changes || 'to' in op.changes) {
+    draft.markStructure(store);
+  }
 
   switch (op.type) {
     case 'add': {
