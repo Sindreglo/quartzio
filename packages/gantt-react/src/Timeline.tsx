@@ -6,6 +6,7 @@ import type {
   Interactions,
   Row,
   TaskInteraction,
+  TaskTooltip,
   TimelinePoint,
   TimeSpan,
   TodayLine,
@@ -13,6 +14,7 @@ import type {
 import { memo, type PointerEvent, type ReactElement, useEffect, useId, useRef } from 'react';
 import { BarHandles, TaskBar } from './Bars';
 import { DraftBar, DraftLink } from './Drafts';
+import { type RenderTaskTooltip, TaskTooltipView } from './Tooltip';
 
 // Rows get the same array while scrolling within the rendered window, so memo skips most re-renders.
 const HeaderRow = memo(function HeaderRow({
@@ -156,6 +158,8 @@ export function TimelineBody({
   today,
   interaction,
   interactions,
+  tooltip,
+  renderTaskTooltip,
   scrollBy,
   width,
   height,
@@ -170,6 +174,8 @@ export function TimelineBody({
   nonWorkingTime: readonly TimeSpan[];
   today: TodayLine | null;
   interaction: TaskInteraction | null;
+  tooltip: TaskTooltip | null;
+  renderTaskTooltip: RenderTaskTooltip | undefined;
   width: number;
   height: number;
 }): ReactElement {
@@ -234,13 +240,20 @@ export function TimelineBody({
       onPointerMove={(event) => {
         if (!event.isPrimary) return;
         const body = event.currentTarget;
-        if (body.hasPointerCapture(event.pointerId)) gantt.pointerMove(pointOf(event));
-        else body.dataset.hit = gantt.hitTest(pointOf(event))?.area ?? '';
+        if (body.hasPointerCapture(event.pointerId)) {
+          gantt.pointerMove(pointOf(event));
+          return;
+        }
+        body.dataset.hit = gantt.hitTest(pointOf(event))?.area ?? '';
+        if (event.pointerType !== 'touch') gantt.hover(pointOf(event)); // no tooltip for touch
       }}
       onPointerUp={(event) => {
         if (event.isPrimary && event.currentTarget.hasPointerCapture(event.pointerId)) {
           gantt.pointerUp(pointOf(event));
         }
+      }}
+      onPointerLeave={() => {
+        gantt.hover(null);
       }}
       onPointerCancel={(event) => {
         if (event.isPrimary) gantt.cancelInteraction();
@@ -265,6 +278,7 @@ export function TimelineBody({
       {interaction && interaction.kind !== 'link' && draftRow && (
         <DraftBar interaction={interaction} row={draftRow} />
       )}
+      {tooltip && <TaskTooltipView tooltip={tooltip} render={renderTaskTooltip} />}
       {interaction?.kind === 'link' && <DraftLink interaction={interaction} width={width} height={height} />}
     </div>
   );

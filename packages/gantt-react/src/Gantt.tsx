@@ -18,6 +18,7 @@ import { engineOptions } from './options';
 import { follow, isEcho } from './scrollSync';
 import { rowElementId, TaskListBody, TaskListHeader } from './TaskList';
 import { TimelineBody, TimelineHeader } from './Timeline';
+import type { RenderTaskTooltip } from './Tooltip';
 
 /**
  * Passing the `data` prop — even as `undefined`, e.g. while loading — makes the chart controlled.
@@ -31,6 +32,8 @@ export interface GanttProps extends GanttOptions {
   style?: CSSProperties | undefined;
   /** Gives access to the engine controller, e.g. `ref.current.transact(tx => ...)`. */
   ref?: Ref<GanttController> | undefined;
+  /** Replaces the content of the task tooltip (turn it off with `taskTooltip={false}`). */
+  renderTaskTooltip?: RenderTaskTooltip | undefined;
 }
 
 export function Gantt(props: GanttProps): ReactElement {
@@ -124,7 +127,10 @@ export function Gantt(props: GanttProps): ReactElement {
     follow(listBodyRef.current, 'scrollLeft', listScrollbarRef.current);
   }, [layout.horizontal, layout.vertical]);
 
-  const keyboard = useGridKeyboard(gantt, scrollerRef);
+  const keyboard = useGridKeyboard(gantt, scrollerRef, state.editing);
+  const focusChart = useCallback(() => {
+    rootRef.current?.focus({ preventScroll: true });
+  }, []);
   const activeRow = rows.items.find((row) => row.active);
 
   // The scrollbars can only scroll in their own direction; pass the other one on to the content.
@@ -203,8 +209,9 @@ export function Gantt(props: GanttProps): ReactElement {
                 rows={rows.items}
                 columns={state.columns}
                 idPrefix={idPrefix}
-                onToggle={gantt.toggle}
-                onClick={gantt.rowClick}
+                gantt={gantt}
+                editing={state.editing}
+                onEditDone={focusChart}
               />
             </div>
             {rows.count === 0 && <div className="qz-gantt__empty">No tasks</div>}
@@ -212,6 +219,8 @@ export function Gantt(props: GanttProps): ReactElement {
           <TimelineBody
             gantt={gantt}
             interaction={state.interaction}
+            tooltip={state.tooltip}
+            renderTaskTooltip={props.renderTaskTooltip}
             interactions={state.interactions}
             scrollBy={(x, y) => {
               scrollerRef.current?.scrollBy(x, y);

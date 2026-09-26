@@ -676,3 +676,99 @@
   pointer-events: none;
   background: var(--qz-today-color);
 }
+
+/* --- Task tooltip (placed by the engine; shown after a short delay) --- */
+.qz-tooltip {
+  position: absolute;
+  z-index: 3;
+  /* Its content's width (capped): positioned from the left, it would otherwise shrink to the room on the right. */
+  width: max-content;
+  max-width: var(--qz-tooltip-max-width, 320px);
+  padding: 6px 8px;
+  font-size: var(--qz-header-font-size);
+  color: var(--qz-tooltip-color);
+  pointer-events: none;
+  background: var(--qz-tooltip-background);
+  border-radius: 4px;
+  transform: translateY(calc(-100% - 4px));
+  animation: qz-tooltip-in 0.15s ease-out var(--qz-tooltip-delay, 0.4s) backwards;
+}
+
+.qz-tooltip--below {
+  transform: translateY(4px);
+}
+
+.qz-tooltip--end {
+  translate: -100% 0;
+}
+
+@keyframes qz-tooltip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.qz-tooltip__title {
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.qz-tooltip__fields {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.qz-tooltip__fields dt {
+  opacity: 0.7;
+}
+
+.qz-tooltip__fields dd {
+  margin: 0;
+}
+
+/* --- Editing a cell --- */
+.qz-grid__row--editing {
+  z-index: 1;
+}
+
+.qz-grid__cell--editing {
+  position: relative;
+  padding-right: 2px;
+}
+
+.qz-cell-editor {
+  flex: 1;
+  min-width: 0;
+  height: calc(100% - 6px);
+  padding: 0 4px;
+  font: inherit;
+  color: var(--qz-color-text);
+  background: var(--qz-color-background);
+  border: 1px solid var(--qz-color-focus);
+  border-radius: 3px;
+  outline: none;
+}
+
+.qz-cell-editor--invalid {
+  border-color: var(--qz-invalid-color);
+}
+
+.qz-cell-editor__error {
+  position: absolute;
+  top: calc(100% - 2px);
+  /* As wide as the cell, wrapping: the list clips anything wider. */
+  right: 2px;
+  left: 2px;
+  z-index: 3;
+  padding: 3px 6px;
+  font-size: var(--qz-header-font-size);
+  color: #ffffff;
+  text-align: start;
+  background: var(--qz-invalid-color);
+  border-radius: 4px;
+}

@@ -1,5 +1,5 @@
-import type { GanttController } from '@quartzio/gantt';
-import { type FocusEvent, type KeyboardEvent, type RefObject, useRef } from 'react';
+import type { CellEdit, GanttController } from '@quartzio/gantt';
+import { type FocusEvent, type KeyboardEvent, type RefObject, useLayoutEffect, useRef } from 'react';
 
 const isEditable = (target: EventTarget) =>
   target instanceof HTMLElement &&
@@ -12,6 +12,7 @@ const isEditable = (target: EventTarget) =>
 export function useGridKeyboard(
   gantt: GanttController,
   scrollerRef: RefObject<HTMLDivElement | null>,
+  editing: CellEdit | null,
 ): {
   tabIndex: number;
   onKeyDown: (event: KeyboardEvent) => void;
@@ -22,6 +23,12 @@ export function useGridKeyboard(
   // A press focuses what's under it (the scroll area, a toggle button). Only focus that comes from a press is
   // moved back to the root: moving focus reached with Tab would trap the keyboard in the chart.
   const pressing = useRef(false);
+  // An edit that moved to another row (Tab) is scrolled into view, so its field is rendered and gets focus.
+  const editedTask = editing?.taskId;
+  useLayoutEffect(() => {
+    const top = editedTask === undefined ? null : gantt.revealTop(editedTask);
+    if (top !== null && scrollerRef.current) scrollerRef.current.scrollTop = top;
+  }, [gantt, scrollerRef, editedTask]);
   return {
     tabIndex: 0,
     onKeyDown(event) {

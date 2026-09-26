@@ -25,6 +25,7 @@ const DEMOS =
         'timeaxis',
         'selection',
         'selection:big',
+        'editing',
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
@@ -486,6 +487,192 @@ async function selectionChecks(send, demo) {
   return problems;
 }
 
+// Tooltip and editing with a real mouse and keys: the tooltip shows (after its delay) fully inside the chart,
+// above the row; a double-clicked cell gets a field inside the cell, focused; Enter saves and gives focus back to
+// the chart; a refused value shows its message below the field, inside the list.
+async function editingChecks(send, demo) {
+  if (demo !== 'editing') return [];
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
+  const problems = [];
+  await sleep(800);
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollTo(0, 0)`);
+  await sleep(300);
+  await reveal(evaluate, 's:design');
+  const bar = await evaluate(`(() => {
+    const rect = document.querySelector('.qz-timeline__row[data-key="s:design"] .qz-bar').getBoundingClientRect();
+    return { x: rect.left + Math.min(20, rect.width / 2), y: rect.top + rect.height / 2, top: rect.top };
+  })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bar.x - 30, y: bar.y });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bar.x, y: bar.y });
+  await sleep(900);
+  const tip = await evaluate(`(() => {
+    const tip = document.querySelector('.qz-tooltip');
+    if (!tip) return null;
+    const rect = tip.getBoundingClientRect();
+    const view = document.querySelector('.qz-gantt__scroller').getBoundingClientRect();
+    const row = document.querySelector('.qz-timeline__row[data-key="s:design"]').getBoundingClientRect();
+    const header = document.querySelector('.qz-timeline__header').getBoundingClientRect();
+    return {
+      title: tip.querySelector('.qz-tooltip__title')?.textContent,
+      opacity: Number(getComputedStyle(tip).opacity),
+      inside: rect.left >= view.left - 1 && rect.right <= view.right + 1 && rect.top >= header.bottom - 1 && rect.bottom <= view.bottom + 1,
+      // Design is the second row: below it, as there's no room above (the sticky header would cover it).
+      below: rect.top >= row.bottom - 1,
+    };
+  })()`);
+  if (!tip) problems.push('editing: no tooltip over the Design bar');
+  else {
+    if (tip.title !== 'Design' || tip.opacity < 0.99)
+      problems.push(`editing: tooltip not shown right (${JSON.stringify(tip)})`);
+    if (!tip.inside || !tip.below)
+      problems.push(`editing: tooltip not below the row inside the chart (${JSON.stringify(tip)})`);
+  }
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+
+  const cellAt = (row, column) => `(() => {
+    const cell = document.querySelector('.qz-grid__row[data-key="${row}"]').querySelectorAll('.qz-grid__cell')[${column}];
+    // The list scrolls sideways when its columns don't fit: bring the cell into it first.
+    const body = document.querySelector('.qz-list__body');
+    const box = body.getBoundingClientRect();
+    const before = cell.getBoundingClientRect();
+    if (before.right > box.right) body.scrollLeft += before.right - box.right;
+    if (before.left < box.left) body.scrollLeft -= box.left - before.left;
+    const list = body.getBoundingClientRect();
+    const rect = cell.getBoundingClientRect();
+    return { x: Math.min(rect.right, list.right) - 12, y: rect.top + rect.height / 2 };
+  })()`;
+  const doubleClick = async ({ x, y }) => {
+    for (const clickCount of [1, 2]) {
+      await send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x,
+        y,
+        button: 'left',
+        buttons: 1,
+        clickCount,
+      });
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x,
+        y,
+        button: 'left',
+        buttons: 0,
+        clickCount,
+      });
+    }
+    await sleep(200);
+  };
+  const field = `(() => {
+    const input = document.querySelector('.qz-cell-editor');
+    if (!input) return null;
+    const rect = input.getBoundingClientRect();
+    const cell = input.closest('.qz-grid__cell').getBoundingClientRect();
+    const error = document.querySelector('.qz-cell-editor__error')?.getBoundingClientRect();
+    const list = document.querySelector('.qz-list__body').getBoundingClientRect();
+    return {
+      type: input.type,
+      focused: document.activeElement === input,
+      inCell: rect.left >= cell.left - 1 && rect.right <= cell.right + 1 && rect.top >= cell.top && rect.bottom <= cell.bottom && rect.width > 30,
+      error: error ? error.top >= rect.bottom - 3 && error.bottom <= list.bottom && error.width > 0 : null,
+    };
+  })()`;
+  const press = async (key, code, vk) => {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: vk });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk });
+    await sleep(150);
+  };
+
+  await doubleClick(await evaluate(cellAt('s:design', 0)));
+  const name = await evaluate(field);
+  if (!name?.focused || !name.inCell || name.type !== 'text')
+    problems.push(`editing: name field not in its cell, focused (${JSON.stringify(name)})`);
+  await send('Input.insertText', { text: 'Design (edited)' });
+  await press('Enter', 'Enter', 13);
+  const saved = await evaluate(`({
+    text: document.querySelector('.qz-grid__row[data-key="s:design"] .qz-grid__text').textContent,
+    focused: document.activeElement === document.querySelector('.qz-gantt'),
+    open: document.querySelector('.qz-cell-editor') !== null,
+  })`);
+  if (saved.text !== 'Design (edited)' || saved.open || !saved.focused)
+    problems.push(`editing: Enter did not save and give focus back (${JSON.stringify(saved)})`);
+
+  await doubleClick(await evaluate(cellAt('s:develop', 3)));
+  await send('Input.insertText', { text: 'soon' });
+  await press('Enter', 'Enter', 13);
+  const refused = await evaluate(field);
+  if (!refused?.error)
+    problems.push(
+      `editing: a refused duration shows no message below the field (${JSON.stringify(refused)})`,
+    );
+  await press('Escape', 'Escape', 27);
+
+  await doubleClick(await evaluate(cellAt('s:vendor', 1)));
+  const date = await evaluate(field);
+  if (date?.type !== 'date' || !date.inCell)
+    problems.push(`editing: start date field not a date field in its cell (${JSON.stringify(date)})`);
+  await press('Escape', 'Escape', 27);
+  // Undo the rename, for a clean screenshot of the demo.
+  await send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'z',
+    code: 'KeyZ',
+    windowsVirtualKeyCode: 90,
+    modifiers: 2,
+  });
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'z',
+    code: 'KeyZ',
+    windowsVirtualKeyCode: 90,
+    modifiers: 2,
+  });
+  // At the far right: the tooltip of the last bar stays inside the visible timeline, as wide as its room allows
+  // (aligned to the bar's end when there's more room that way).
+  await evaluate(`(() => {
+    const scroller = document.querySelector('.qz-gantt__scroller');
+    scroller.scrollLeft = scroller.scrollWidth;
+  })()`);
+  await sleep(400);
+  const late = await evaluate(`(() => {
+    const rect = document.querySelector('.qz-timeline__row[data-key="s:late"] .qz-bar').getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: late.x, y: late.y });
+  await sleep(900);
+  const end = await evaluate(`(() => {
+    const tip = document.querySelector('.qz-tooltip');
+    if (!tip) return null;
+    const rect = tip.getBoundingClientRect();
+    const view = document.querySelector('.qz-gantt__scroller').getBoundingClientRect();
+    const title = tip.querySelector('.qz-tooltip__title');
+    const list = document.querySelector('.qz-list__body').getBoundingClientRect();
+    return {
+      end: tip.classList.contains('qz-tooltip--end'),
+      inside: rect.left >= view.left - 1 && rect.right <= view.right + 1,
+      // Not squeezed to a word per line: the title fits on one line or is cut with an ellipsis.
+      wide: rect.width >= Math.min(200, view.right - list.right - 20) && title.getBoundingClientRect().height < 20,
+      };
+  })()`);
+  if (!end?.inside || !end.wide) problems.push(`editing: end-aligned tooltip wrong (${JSON.stringify(end)})`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft = 0`);
+  await sleep(300);
+
+  // For the screenshot: a refused value with its message, and the tooltip of a bar further down.
+  await doubleClick(await evaluate(cellAt('s:develop', 3)));
+  await send('Input.insertText', { text: 'soon' });
+  await press('Enter', 'Enter', 13);
+  await reveal(evaluate, 's:vendor');
+  const vendor = await evaluate(`(() => {
+    const rect = document.querySelector('.qz-timeline__row[data-key="s:vendor"] .qz-bar').getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: vendor.x, y: vendor.y });
+  await sleep(900);
+  return problems;
+}
+
 // Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
 // scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
 // the day), and the bar must sit on a day boundary.
@@ -718,6 +905,7 @@ try {
       problems.push(...(await gestureChecks(send)));
       problems.push(...(await dragChecks(send, id)));
       problems.push(...(await selectionChecks(send, id)));
+      problems.push(...(await editingChecks(send, id)));
       const label = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}`;
       const file = join(OUT, `${label}.png`);
       const shot = await send('Page.captureScreenshot', { format: 'png' });

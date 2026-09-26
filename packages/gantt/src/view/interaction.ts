@@ -194,6 +194,42 @@ function speed(position: number, low: number, high: number): number {
   return 0;
 }
 
+function barOf(view: Pick<InteractionView, 'project' | 'timeAxis' | 'rows'>, id: Id): Bar | null {
+  const rendered = view.rows.items.find((row) => row.id === id);
+  if (rendered) return rendered.bar;
+  const task = view.project.tasks.byId.get(id);
+  if (!task) return null;
+  return computeBar(task, taskDates(task), !getTreeIndex(view.project.tasks).isLeaf(id), view.timeAxis);
+}
+
+/** The bar extent a point is tested against: milestones are their diamond; short bars get a minimum width. */
+const extent = (bar: Bar) => {
+  const left = bar.kind === 'milestone' ? bar.x - MILESTONE_RADIUS : bar.x;
+  const width = bar.kind === 'milestone' ? 2 * MILESTONE_RADIUS : bar.width;
+  const extra = Math.max(0, MIN_HIT_WIDTH - width) / 2;
+  return { left, width, from: left - extra, to: left + width + extra };
+};
+
+const rowAt = (view: Pick<InteractionView, 'rows' | 'rowIds'>, point: TimelinePoint) => {
+  if (!finite(point) || point.y < 0) return null;
+  const index = Math.floor(point.y / view.rows.rowHeight);
+  const taskId = view.rowIds[index];
+  return taskId === undefined ? null : { taskId, index };
+};
+
+/** The bar under a point (its whole extent, whatever is enabled), for the task tooltip. */
+export function barUnder(
+  view: Pick<InteractionView, 'project' | 'timeAxis' | 'rows' | 'rowIds'>,
+  point: TimelinePoint,
+): { taskId: Id; index: number; bar: Bar } | null {
+  const row = rowAt(view, point);
+  if (!row) return null;
+  const bar = barOf(view, row.taskId);
+  if (!bar) return null;
+  const { from, to } = extent(bar);
+  return point.x >= from && point.x <= to ? { ...row, bar } : null;
+}
+
 /**
  * Dragging on the timeline, as a small state machine fed with pointer events in timeline coordinates: moving,
  * resizing, drawing bars, dragging progress and drawing dependencies. Snaps to the preset's time resolution; a
@@ -201,29 +237,6 @@ function speed(position: number, low: number, high: number): number {
  */
 export function createInteraction(context: InteractionContext): Interaction {
   let pending: Pending | null = null;
-
-  const barOf = (view: InteractionView, id: Id): Bar | null => {
-    const rendered = view.rows.items.find((row) => row.id === id);
-    if (rendered) return rendered.bar;
-    const task = view.project.tasks.byId.get(id);
-    if (!task) return null;
-    return computeBar(task, taskDates(task), !getTreeIndex(view.project.tasks).isLeaf(id), view.timeAxis);
-  };
-
-  /** The bar extent a point is tested against: milestones are their diamond; short bars get a minimum width. */
-  const extent = (bar: Bar) => {
-    const left = bar.kind === 'milestone' ? bar.x - MILESTONE_RADIUS : bar.x;
-    const width = bar.kind === 'milestone' ? 2 * MILESTONE_RADIUS : bar.width;
-    const extra = Math.max(0, MIN_HIT_WIDTH - width) / 2;
-    return { left, width, from: left - extra, to: left + width + extra };
-  };
-
-  const rowAt = (view: InteractionView, point: TimelinePoint) => {
-    if (!finite(point) || point.y < 0) return null;
-    const index = Math.floor(point.y / view.rows.rowHeight);
-    const taskId = view.rowIds[index];
-    return taskId === undefined ? null : { taskId, index };
-  };
 
   const hitTest = (point: TimelinePoint): TimelineHit | null => {
     const view = context.view();

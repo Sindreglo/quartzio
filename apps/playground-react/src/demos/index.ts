@@ -5,6 +5,7 @@ import { CalendarDemo } from './calendar';
 import { DataModelDemo } from './data-model';
 import { DependenciesDemo } from './dependencies';
 import { DragDemo } from './drag';
+import { EditingDemo } from './editing';
 import { SchedulingDemo } from './scheduling';
 import { SelectionDemo } from './selection';
 import { TaskListDemo } from './task-list';
@@ -88,5 +89,12 @@ export const demos: Demo[] = [
     description:
       'Click, Ctrl/Cmd-click and Shift-click rows; with the chart focused, move with the arrow keys, expand and collapse with Left/Right, select all with Ctrl/Cmd+A, delete with Delete, and undo with Ctrl/Cmd+Z. Every change (a drop, a deletion) is one undo step.',
     Component: SelectionDemo,
+  },
+  {
+    id: 'editing',
+    title: 'Tooltip & editing',
+    description:
+      'Hover a bar for its tooltip. Double-click a cell (or press Enter/F2 on a selected row) to edit it: names, dates in native date fields, durations like 4d or 2w, and % done. The engine reads and validates the value; each edit is one undoable change.',
+    Component: EditingDemo,
   },
 ];

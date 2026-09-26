@@ -6,10 +6,12 @@ import type { ColumnInput, ColumnsState } from './columns';
 import type { DependencyLine } from './dependencies';
 import type { ProposedChange, TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
 import type { HistoryState } from './history';
+import type { CellEdit } from './editing';
 import type { KeyInput } from './keyboard';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 import type { KeyModifiers } from './selection';
+import type { TaskTooltip } from './tooltip';
 
 /**
  * The visible part of the timeline body: its size (excluding the task list and the header) and the scroll
@@ -57,8 +59,12 @@ export interface ViewState {
   readonly history: HistoryState;
   /** Selected task ids, in the order they were selected. The same array while unchanged. */
   readonly selection: readonly Id[];
-  /** The task the keyboard cursor is on (it may be hidden in a collapsed parent), or `null`. */
+  /** The task the keyboard cursor is on, or `null`. */
   readonly activeId: Id | null;
+  /** The tooltip for the task under the pointer, or `null`. The same object while it shows the same. */
+  readonly tooltip: TaskTooltip | null;
+  /** The cell being edited, or `null`. */
+  readonly editing: CellEdit | null;
 }
 
 export interface Interactions {
@@ -148,6 +154,10 @@ export interface GanttOptions {
   deleteKey?: boolean | undefined;
   /** Called with the selected ids whenever the selection changes (also when deleted tasks drop out of it). */
   onSelectionChange?: ((selection: readonly Id[]) => void) | undefined;
+  /** Show a tooltip for the task under the pointer (see `hover`). Default `true`. */
+  taskTooltip?: boolean | undefined;
+  /** Edit cells in the task list (double-click, Enter/F2). Default `true`. See ADR 0011 for what an edit does. */
+  cellEdit?: boolean | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,
@@ -212,6 +222,26 @@ export interface GanttController {
    * when it's in view already, hidden or unknown.
    */
   revealTop: (id: Id) => number | null;
+  /**
+   * The pointer over the timeline body (mouse or pen), for the task tooltip; `null` when it leaves. In the
+   * same coordinates as `pointerDown`.
+   */
+  hover: (point: TimelinePoint | null) => void;
+  /**
+   * Starts editing a cell (the first editable one of the row without a column). Returns whether it can be
+   * edited; an open edit is closed either way.
+   */
+  startEdit: (id: Id, columnId?: string) => boolean;
+  /** The text in the cell's field, as it's typed. */
+  editInput: (text: string) => void;
+  /**
+   * A key pressed in the cell's field: Enter saves, Escape cancels, Tab and Shift+Tab save and move on.
+   * Returns whether the key was used (other keys belong to the field).
+   */
+  editKeyDown: (key: KeyInput) => boolean;
+  /** Saves the edit. Returns `false` (and keeps it open, with the reason in `error`) when it's refused. */
+  commitEdit: () => boolean;
+  cancelEdit: () => void;
   /** Expands a collapsed task or collapses an expanded one. Unknown ids and leaf tasks are ignored. */
   toggle: (id: Id) => void;
   setExpanded: (id: Id, expanded: boolean) => void;

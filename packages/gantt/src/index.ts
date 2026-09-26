@@ -100,7 +100,9 @@ export type {
 } from './view/columns';
 export { DEFAULT_COLUMNS } from './view/columns';
 export { createGantt } from './view/createGantt';
+export type { CellEdit, EditKind } from './view/editing';
 export type { HistoryState } from './view/history';
+export type { TaskTooltip } from './view/tooltip';
 export type { KeyInput } from './view/keyboard';
 export type { Row, RowsState } from './view/rows';
 export type { KeyModifiers } from './view/selection';

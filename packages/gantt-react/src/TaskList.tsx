@@ -1,4 +1,4 @@
-import type { ColumnsState, Id, KeyModifiers, Row } from '@quartzio/gantt';
+import type { CellEdit, ColumnsState, GanttController, KeyModifiers, Row } from '@quartzio/gantt';
 import {
   type CSSProperties,
   memo,
@@ -6,6 +6,7 @@ import {
   type NamedExoticComponent,
   type ReactElement,
 } from 'react';
+import { CellEditor } from './CellEditor';
 
 /** The id of a row's element, for `aria-activedescendant` (encoded: task ids may contain spaces). */
 export const rowElementId = (prefix: string, row: Row): string => `${prefix}-${encodeURIComponent(row.key)}`;
@@ -37,28 +38,34 @@ export const TaskListHeader: NamedExoticComponent<{ columns: ColumnsState; heigh
 );
 
 // Rows keep their identity while unchanged, so memo skips them on most updates.
+// Only the edited row gets `editing`, so the others stay memoized while typing.
 const TaskRow = memo(function TaskRow({
   row,
   columns,
   idPrefix,
-  onToggle,
-  onClick,
+  gantt,
+  editing,
+  onEditDone,
 }: {
   row: Row;
   columns: ColumnsState;
   idPrefix: string;
-  onToggle: (id: Id) => void;
-  onClick: (id: Id, modifiers: KeyModifiers) => void;
+  gantt: GanttController;
+  editing: CellEdit | null;
+  onEditDone: () => void;
 }): ReactElement {
+  const className = ['qz-grid__row'];
+  if (row.active) className.push('qz-grid__row--active');
+  if (editing) className.push('qz-grid__row--editing');
   return (
     <div
       id={rowElementId(idPrefix, row)}
-      className={row.active ? 'qz-grid__row qz-grid__row--active' : 'qz-grid__row'}
+      className={className.join(' ')}
       data-key={row.key}
       role="row"
       aria-selected={row.selected}
       onClick={(event) => {
-        onClick(row.id, modifiersOf(event));
+        gantt.rowClick(row.id, modifiersOf(event));
       }}
       // Rows are virtualized, so tell assistive tech where each one is (the header row is 1).
       aria-rowindex={row.index + 2}
@@ -66,36 +73,47 @@ const TaskRow = memo(function TaskRow({
       aria-expanded={row.hasChildren ? row.expanded : undefined}
       style={{ transform: `translateY(${String(row.y)}px)`, height: row.height }}
     >
-      {columns.items.map((column, index) => (
-        <div
-          key={column.id}
-          className={`qz-grid__cell qz-align-${column.align}${column.tree ? ' qz-grid__cell--tree' : ''}`}
-          role="gridcell"
-          style={
-            column.tree
-              ? ({ width: column.width, '--qz-depth': row.depth } as CSSProperties)
-              : { width: column.width }
-          }
-        >
-          {column.tree &&
-            (row.hasChildren ? (
-              <button
-                type="button"
-                className="qz-tree__toggle"
-                aria-label={row.expanded ? 'Collapse' : 'Expand'}
-                // Not a tab stop: the chart is one, and Left/Right expand and collapse.
-                tabIndex={-1}
-                onClick={(event) => {
-                  event.stopPropagation(); // expanding doesn't select the row
-                  onToggle(row.id);
-                }}
-              />
+      {columns.items.map((column, index) => {
+        const edited = editing?.columnId === column.id ? editing : null;
+        return (
+          <div
+            key={column.id}
+            className={`qz-grid__cell qz-align-${column.align}${column.tree ? ' qz-grid__cell--tree' : ''}${edited ? ' qz-grid__cell--editing' : ''}`}
+            role="gridcell"
+            onDoubleClick={column.editable ? () => gantt.startEdit(row.id, column.id) : undefined}
+            style={
+              column.tree
+                ? ({ width: column.width, '--qz-depth': row.depth } as CSSProperties)
+                : { width: column.width }
+            }
+          >
+            {column.tree &&
+              (row.hasChildren ? (
+                <button
+                  type="button"
+                  className="qz-tree__toggle"
+                  aria-label={row.expanded ? 'Collapse' : 'Expand'}
+                  // Not a tab stop: the chart is one, and Left/Right expand and collapse.
+                  tabIndex={-1}
+                  onClick={(event) => {
+                    event.stopPropagation(); // expanding doesn't select the row
+                    gantt.toggle(row.id);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation(); // nor edit the name
+                  }}
+                />
+              ) : (
+                <span className="qz-tree__spacer" />
+              ))}
+            {edited ? (
+              <CellEditor gantt={gantt} edit={edited} label={column.title} onDone={onEditDone} />
             ) : (
-              <span className="qz-tree__spacer" />
-            ))}
-          <span className="qz-grid__text">{row.cells[index]}</span>
-        </div>
-      ))}
+              <span className="qz-grid__text">{row.cells[index]}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 });
@@ -104,14 +122,16 @@ export function TaskListBody({
   rows,
   columns,
   idPrefix,
-  onToggle,
-  onClick,
+  gantt,
+  editing,
+  onEditDone,
 }: {
   rows: readonly Row[];
   columns: ColumnsState;
   idPrefix: string;
-  onToggle: (id: Id) => void;
-  onClick: (id: Id, modifiers: KeyModifiers) => void;
+  gantt: GanttController;
+  editing: CellEdit | null;
+  onEditDone: () => void;
 }): ReactElement {
   return (
     <div className="qz-grid__body" role="rowgroup">
@@ -121,8 +141,9 @@ export function TaskListBody({
           row={row}
           columns={columns}
           idPrefix={idPrefix}
-          onToggle={onToggle}
-          onClick={onClick}
+          gantt={gantt}
+          editing={editing?.rowKey === row.key ? editing : null}
+          onEditDone={onEditDone}
         />
       ))}
     </div>

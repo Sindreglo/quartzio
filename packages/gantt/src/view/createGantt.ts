@@ -32,6 +32,9 @@ import {
 } from './interaction';
 import { createNonWorkingView } from './nonWorking';
 import { createRowsView, UNMEASURED_HEIGHT } from './rows';
+import { tooltipFor, type TaskTooltip } from './tooltip';
+import { createCellEditor, type EditorView } from './cellEditor';
+import { dateKind } from './editing';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
 import type { GanttController, GanttOptions, Interactions, TodayLine, ViewState, Viewport } from './types';
 
@@ -177,6 +180,8 @@ function toCallback<K extends 'validateChange' | 'onSelectionChange'>(
 
 /** Behaviour switches that don't change how anything looks. */
 interface Behaviour {
+  taskTooltip: boolean;
+  cellEdit: boolean;
   undoRedo: boolean;
   multiSelect: boolean;
   deleteKey: boolean;
@@ -187,6 +192,10 @@ interface Behaviour {
 function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviour {
   const has = (key: keyof GanttOptions) => previous === undefined || key in options;
   return {
+    taskTooltip: has('taskTooltip')
+      ? toSwitch(options.taskTooltip, true, 'taskTooltip')
+      : (previous?.taskTooltip ?? true),
+    cellEdit: has('cellEdit') ? toSwitch(options.cellEdit, true, 'cellEdit') : (previous?.cellEdit ?? true),
     undoRedo: has('undoRedo') ? toSwitch(options.undoRedo, true, 'undoRedo') : (previous?.undoRedo ?? true),
     multiSelect: has('multiSelect')
       ? toSwitch(options.multiSelect, true, 'multiSelect')
@@ -257,6 +266,11 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   // True while setOptions applies several changes, so they produce one state update instead of several.
   let batching = false;
 
+  // The pointer over the timeline (for the tooltip), and the tooltip it shows.
+  let hoverPoint: TimelinePoint | null = null;
+  let tooltip: TaskTooltip | null = null;
+  let editorView: EditorView | undefined;
+
   // The bar being dragged (a preview), and the task of every visible row (for hit testing).
   let shownInteraction: TaskInteraction | null = null;
   let interactionView: InteractionView | undefined;
@@ -288,6 +302,24 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       selection,
     });
     visible = { rowIds, rowIndex, tree: getTreeIndex(projectState.tasks) };
+    editorView = {
+      ...visible,
+      project: projectState,
+      columns: view.columns,
+      dateField: dateKind(timeAxis.preset.timeResolution.unit),
+    };
+    const tooltipView = {
+      project: projectState,
+      timeAxis,
+      rows,
+      rowIds,
+      viewport,
+      locale: view.timeline.locale,
+    };
+    tooltip =
+      hoverPoint && behaviour.taskTooltip && !shownInteraction
+        ? tooltipFor(tooltipView, hoverPoint, tooltip)
+        : null;
     const next: ViewState = {
       viewport,
       project: projectState,
@@ -308,6 +340,8 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       history: history.state(),
       selection: selection.ids,
       activeId: selection.active,
+      tooltip,
+      editing: editor.current(editorView),
     };
     interactionView = {
       project: projectState,
@@ -333,8 +367,27 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       shownInteraction = null;
       return { ...next, interaction: null };
     }
+    if (shownInteraction) tooltip = null;
     return next;
   };
+
+  const editor = createCellEditor({
+    view: () => editorView as EditorView,
+    enabled: () => behaviour.cellEdit,
+    plan: (fn) => project.plan(fn),
+    commit(fn) {
+      changing(() => binding.transact(fn));
+    },
+    validate: (change) => (behaviour.validateChange ? behaviour.validateChange(change) : true),
+    show: () => {
+      if (!batching && !destroyed) refresh();
+    },
+    focusRow(id) {
+      selection = selection.set.has(id)
+        ? selectionOf(selection, selection.ids, id, selection.anchor)
+        : selectionOf(selection, [id], id, id);
+    },
+  });
 
   let state = derive(INITIAL_VIEWPORT, project.getState());
 
@@ -342,7 +395,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     view: () => interactionView as InteractionView,
     show(next) {
       shownInteraction = next;
-      setState({ ...state, interaction: next });
+      setState({ ...state, interaction: next, tooltip: next ? null : state.tooltip });
     },
     commit(fn) {
       try {
@@ -398,6 +451,15 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   };
 
   const visibleRows = (): VisibleRows => visible as VisibleRows;
+
+  /**
+   * Saves an open edit whose field is no longer there to take the keys and presses (its row scrolled out of the
+   * rendered window, say); a value that can't be saved is dropped, as on blur.
+   */
+  const closeEdit = (): void => {
+    if (!state.editing) return;
+    if (!editor.commit()) editor.cancel();
+  };
 
   /** Undo or redo. If the data refuses it, the history no longer matches the data and is dropped. */
   const replay = (operations: readonly Operation[], action: HistoryAction): boolean => {
@@ -479,6 +541,8 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       if ('onChange' in next) binding.setOnChange(next.onChange);
       behaviour = nextBehaviour;
       if (!behaviour.undoRedo) history.clear();
+      // Recomputed from scratch: the texts depend on the options (locale, columns).
+      if (!sameView(nextView, previousView)) tooltip = null;
       if (!behaviour.multiSelect && selection.ids.length > 1) {
         const last = selection.ids.at(-1) as Id;
         selection = selectionOf(selection, [last], selection.active, last);
@@ -487,7 +551,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         !sameView(nextView, previousView) ||
         project.getState() !== before ||
         state.history !== history.state() ||
-        state.selection !== selection.ids
+        state.selection !== selection.ids ||
+        (state.tooltip !== null && !behaviour.taskTooltip) ||
+        (state.editing !== null && !behaviour.cellEdit)
       ) {
         refresh();
       }
@@ -506,6 +572,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       ) {
         return;
       }
+      // What's under a still pointer changes while scrolling; the tooltip goes until it moves again.
+      if (viewport.scrollLeft !== current.scrollLeft || viewport.scrollTop !== current.scrollTop)
+        hoverPoint = null;
       setState(derive(viewport, state.project));
       // A drag follows the pointer to what's under it now (this is how auto-scrolling moves it).
       drags.follow();
@@ -532,7 +601,12 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     pointerDown(point, modifiers) {
       if (destroyed || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
       const index = Math.floor(point.y / state.rows.rowHeight);
+      closeEdit();
       press = { origin: point, id: visibleRows().rowIds[index] ?? null, modifiers: modifiersOf(modifiers) };
+      if (hoverPoint) {
+        hoverPoint = null;
+        refresh();
+      }
       drags.pointerDown(point);
       return true;
     },
@@ -580,6 +654,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     keyDown(input) {
       // Checked, as it comes straight from DOM events (or plain JavaScript).
       if (destroyed || typeof (input as unknown) !== 'object' || (input as unknown) === null) return false;
+      closeEdit();
       const height = state.viewport.height > 0 ? state.viewport.height : UNMEASURED_HEIGHT;
       const command = keyCommand(input, {
         ...visibleRows(),
@@ -589,6 +664,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         multiSelect: behaviour.multiSelect,
         deleteKey: behaviour.deleteKey,
         undoRedo: behaviour.undoRedo,
+        cellEdit: behaviour.cellEdit,
       });
       if (!command) return false;
       switch (command.type) {
@@ -606,7 +682,45 @@ export function createGantt(options: GanttOptions = {}): GanttController {
           return controller.undo();
         case 'redo':
           return controller.redo();
+        case 'edit': {
+          const started = editor.start(command.id);
+          announce(); // the cursor may have moved
+          return started;
+        }
       }
+    },
+
+    hover(point) {
+      if (destroyed) return;
+      const next = point && Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
+      if (next === null && hoverPoint === null) return;
+      hoverPoint = next;
+      const shown =
+        next && behaviour.taskTooltip && !shownInteraction && interactionView
+          ? tooltipFor(interactionView, next, tooltip)
+          : null;
+      tooltip = shown;
+      if (shown !== state.tooltip) setState({ ...state, tooltip: shown });
+    },
+
+    startEdit(id, columnId) {
+      if (destroyed) return false;
+      const started = editor.start(id, columnId);
+      announce(); // the cursor may have moved
+      return started;
+    },
+    editInput(text) {
+      if (!destroyed) editor.input(text);
+    },
+    editKeyDown(key) {
+      if (destroyed) return false;
+      const used = editor.keyDown(key);
+      announce(); // Tab may move the cursor
+      return used;
+    },
+    commitEdit: () => !destroyed && editor.commit(),
+    cancelEdit() {
+      if (!destroyed) editor.cancel();
     },
 
     revealTop(id) {

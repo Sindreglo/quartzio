@@ -24,6 +24,8 @@ const OPTION_KEYS = [
   'multiSelect',
   'deleteKey',
   'onSelectionChange',
+  'taskTooltip',
+  'cellEdit',
 ] as const satisfies readonly (keyof GanttOptions)[];
 // Fails to compile when GanttOptions gets an option that isn't listed.
 const _allListed: Exclude<keyof GanttOptions, (typeof OPTION_KEYS)[number] | 'data'> extends never

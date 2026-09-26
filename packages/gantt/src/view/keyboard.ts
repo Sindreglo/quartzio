@@ -24,6 +24,7 @@ export interface KeyContext extends VisibleRows {
   readonly multiSelect: boolean;
   readonly deleteKey: boolean;
   readonly undoRedo: boolean;
+  readonly cellEdit: boolean;
 }
 
 /** What a key press does; carried out by the controller. */
@@ -31,6 +32,7 @@ export type KeyCommand =
   | { readonly type: 'select'; readonly selection: Selection }
   | { readonly type: 'expand'; readonly id: Id; readonly expanded: boolean }
   | { readonly type: 'delete'; readonly ids: readonly Id[]; readonly selection: Selection }
+  | { readonly type: 'edit'; readonly id: Id }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' };
 
@@ -108,6 +110,9 @@ export function keyCommand(input: KeyInput, context: KeyContext): KeyCommand | n
     }
     case ' ':
       return { type: 'select', selection: toggleRow(selection, current, context, context.multiSelect) };
+    case 'Enter':
+    case 'F2':
+      return context.cellEdit && !mod && !shift ? { type: 'edit', id } : null;
   }
   return null;
 }

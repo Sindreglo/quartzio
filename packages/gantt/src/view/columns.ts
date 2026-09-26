@@ -30,6 +30,11 @@ export interface ColumnDefinition {
   align?: 'start' | 'end';
   /** Cell text. Must not throw (errors leave the cell empty). */
   value?: (cell: CellContext) => string;
+  /**
+   * Whether cells can be edited (double-click, Enter/F2). Default `true` for columns with a `field` (the edit
+   * writes that field), and always `false` without one.
+   */
+  editable?: boolean;
 }
 
 export type ColumnInput = BuiltInColumnId | ColumnDefinition;
@@ -43,6 +48,8 @@ export interface Column {
   readonly align: 'start' | 'end';
   /** The column that shows the tree (indentation and expand/collapse). */
   readonly tree: boolean;
+  /** Its cells can be edited (some cells still can't, e.g. a parent's dates). */
+  readonly editable: boolean;
 }
 
 export interface ColumnsState {
@@ -54,6 +61,8 @@ export interface ColumnsState {
 export interface ResolvedColumns {
   readonly state: ColumnsState;
   readonly values: readonly ((cell: CellContext) => string)[];
+  /** The field each column edits, or `null` when it can't be edited. */
+  readonly fields: readonly (BuiltInColumnId | null)[];
 }
 
 interface BuiltIn {
@@ -102,6 +111,9 @@ const BUILT_IN: Record<BuiltInColumnId, BuiltIn> = {
   },
 };
 
+/** A built-in column's text for a cell (also used by the task tooltip). */
+export const builtInText = (field: BuiltInColumnId, cell: CellContext): string => BUILT_IN[field].value(cell);
+
 export const DEFAULT_COLUMNS: readonly BuiltInColumnId[] = ['name', 'startDate', 'endDate', 'duration'];
 
 const isBuiltIn = (value: unknown): value is BuiltInColumnId =>
@@ -115,6 +127,7 @@ export function resolveColumns(input: readonly ColumnInput[] = DEFAULT_COLUMNS):
   const ids = new Set<string>();
   const items: Column[] = [];
   const values: ((cell: CellContext) => string)[] = [];
+  const fields: (BuiltInColumnId | null)[] = [];
   let x = 0;
 
   for (const entry of entries as readonly ColumnInput[]) {
@@ -140,6 +153,11 @@ export function resolveColumns(input: readonly ColumnInput[] = DEFAULT_COLUMNS):
     if (definition.title !== undefined && typeof definition.title !== 'string') {
       throw new QuartzioError(`Column "${id}": "title" must be a string.`);
     }
+    const editableInput: unknown = definition.editable;
+    if (editableInput !== undefined && typeof editableInput !== 'boolean') {
+      throw new QuartzioError(`Column "${id}": "editable" must be true or false.`);
+    }
+    const editable = field !== undefined && editableInput !== false;
     const align: unknown = definition.align;
     if (align !== undefined && align !== 'start' && align !== 'end') {
       throw new QuartzioError(`Column "${id}": "align" must be "start" or "end".`);
@@ -159,7 +177,9 @@ export function resolveColumns(input: readonly ColumnInput[] = DEFAULT_COLUMNS):
       x,
       align: definition.align ?? builtIn?.align ?? 'start',
       tree: field === 'name',
+      editable,
     });
+    fields.push(editable ? field : null);
     // A bug in a custom value function must not break rendering.
     values.push((cell) => {
       try {
@@ -173,5 +193,5 @@ export function resolveColumns(input: readonly ColumnInput[] = DEFAULT_COLUMNS):
     });
     x += width;
   }
-  return { state: { items, totalWidth: x }, values };
+  return { state: { items, totalWidth: x }, values, fields };
 }

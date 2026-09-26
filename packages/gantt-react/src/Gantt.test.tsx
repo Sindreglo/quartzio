@@ -559,7 +559,7 @@ describe('<Gantt />', () => {
       expect(chart.getAttribute('aria-activedescendant')).toBe(active.id);
       expect(active.id).not.toMatch(/\s/);
       expect(active.getAttribute('aria-selected')).toBe('true');
-      expect(fireEvent.keyDown(chart, { key: 'Enter' })).toBe(true); // not used: left alone
+      expect(fireEvent.keyDown(chart, { key: 'x' })).toBe(true); // not used: left alone
     });
 
     it('deletes the selected task with Delete, and undoes with Ctrl+Z', () => {
@@ -623,6 +623,161 @@ describe('<Gantt />', () => {
       fireEvent.click(rows(container)[2] as HTMLElement);
       fireEvent.keyDown(root(container), { key: 'Delete' });
       expect(rowCount(container)).toBe(3);
+    });
+  });
+  describe('tooltip and editing', () => {
+    const project: ProjectInput = {
+      settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+      tasks: [
+        { id: 'm', name: 'Manual', manuallyScheduled: true, startDate: '2026-10-06', endDate: '2026-10-08' },
+        { id: 'a', name: 'Auto', duration: 2 },
+      ],
+    };
+    const renderChart = (props = {}) =>
+      render(
+        <Gantt
+          defaultData={project}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          locale="en-US"
+          {...props}
+        />,
+      );
+    const body = (container: HTMLElement) => container.querySelector('.qz-timeline__body') as HTMLElement;
+    const cell = (container: HTMLElement, row: number, column: number) =>
+      container.querySelectorAll('.qz-grid__row')[row]?.querySelectorAll('.qz-grid__cell')[
+        column
+      ] as HTMLElement;
+    const mouse = { pointerId: 1, pointerType: 'mouse', isPrimary: true };
+
+    it('shows the tooltip of the bar under a mouse, and hides it when the pointer leaves', () => {
+      const { container } = renderChart();
+      fireEvent.pointerMove(body(container), { ...mouse, clientX: 50, clientY: 18 });
+      expect(container.querySelector('.qz-tooltip__title')?.textContent).toBe('Manual');
+      expect(container.querySelector('.qz-tooltip--below')).not.toBeNull(); // first row
+      fireEvent.pointerLeave(body(container), mouse);
+      expect(container.querySelector('.qz-tooltip')).toBeNull();
+    });
+
+    it('shows no tooltip for touch, and custom content with renderTaskTooltip', () => {
+      const { container, rerender } = renderChart();
+      fireEvent.pointerMove(body(container), { ...mouse, pointerType: 'touch', clientX: 50, clientY: 18 });
+      expect(container.querySelector('.qz-tooltip')).toBeNull();
+      rerender(
+        <Gantt
+          defaultData={project}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          renderTaskTooltip={(tooltip) => <b className="custom">{tooltip.task.id}</b>}
+        />,
+      );
+      fireEvent.pointerMove(body(container), { ...mouse, clientX: 50, clientY: 18 });
+      expect(container.querySelector('.qz-tooltip .custom')?.textContent).toBe('m');
+    });
+
+    it('edits a cell on double-click, saves with Enter and gives focus back to the chart', () => {
+      const onChange = vi.fn();
+      const { container } = renderChart({ onChange });
+      fireEvent.doubleClick(cell(container, 0, 0));
+      const input = screen.getByRole('textbox', { name: 'Name' });
+      expect(document.activeElement).toBe(input);
+      fireEvent.change(input, { target: { value: 'Renamed' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
+      expect(cell(container, 0, 0).textContent).toBe('Renamed');
+      expect(document.activeElement).toBe(container.firstElementChild);
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    it('uses a date field for dates, and shows why a value is refused', () => {
+      const { container } = renderChart();
+      fireEvent.doubleClick(cell(container, 1, 3)); // duration
+      const input = screen.getByRole('textbox', { name: 'Duration' });
+      fireEvent.change(input, { target: { value: 'soon' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(screen.getByRole('alert').textContent).toMatch(/duration/);
+      fireEvent.keyDown(input, { key: 'Escape' });
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
+      fireEvent.doubleClick(cell(container, 0, 1));
+      expect((container.querySelector('.qz-cell-editor') as HTMLInputElement).type).toBe('date');
+    });
+
+    it('saves on blur, and drops a value that cannot be saved', () => {
+      const { container } = renderChart();
+      fireEvent.doubleClick(cell(container, 0, 0));
+      let input = screen.getByRole('textbox', { name: 'Name' });
+      fireEvent.change(input, { target: { value: 'Blurred' } });
+      fireEvent.blur(input);
+      expect(cell(container, 0, 0).textContent).toBe('Blurred');
+      fireEvent.doubleClick(cell(container, 1, 3));
+      input = screen.getByRole('textbox', { name: 'Duration' });
+      fireEvent.change(input, { target: { value: '-3' } });
+      fireEvent.blur(input);
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
+      expect(cell(container, 1, 3).textContent).toBe('2 days');
+    });
+
+    it('starts editing with Enter on the active row, and keys in the field stay there', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = renderChart({ onSelectionChange });
+      const chart = container.firstElementChild as HTMLElement;
+      fireEvent.keyDown(chart, { key: 'ArrowDown' });
+      fireEvent.keyDown(chart, { key: 'Enter' });
+      const input = screen.getByRole('textbox', { name: 'Name' });
+      onSelectionChange.mockClear();
+      fireEvent.keyDown(input, { key: 'ArrowDown' }); // moves the caret, not the row
+      expect(onSelectionChange).not.toHaveBeenCalled();
+      expect(container.querySelector('.qz-cell-editor')).not.toBeNull();
+    });
+
+    it('keeps the field open in StrictMode', async () => {
+      const { container } = render(
+        <StrictMode>
+          <Gantt defaultData={project} locale="en-US" />
+        </StrictMode>,
+      );
+      fireEvent.doubleClick(cell(container, 0, 0));
+      await act(() => Promise.resolve());
+      expect(document.activeElement).toBe(container.querySelector('.qz-cell-editor'));
+    });
+
+    it('does not edit the name when the expand button is double-clicked', () => {
+      const { container } = render(
+        <Gantt
+          defaultData={{ tasks: [{ id: 'p', name: 'Parent', children: [{ id: 'c', name: 'Child' }] }] }}
+        />,
+      );
+      fireEvent.doubleClick(screen.getByRole('button', { name: 'Collapse' }));
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
+    });
+
+    it('gives focus back to the chart when the field goes while focused', async () => {
+      const ref = createRef<GanttController>();
+      const { container } = render(
+        <Gantt
+          ref={ref}
+          defaultData={{ tasks: [{ id: 'p', name: 'Parent', children: [{ id: 'c', name: 'Child' }] }] }}
+        />,
+      );
+      act(() => {
+        ref.current?.startEdit('c', 'name');
+      });
+      expect(document.activeElement).toBe(container.querySelector('.qz-cell-editor'));
+      act(() => {
+        ref.current?.toggle('p'); // hides the edited row
+      });
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
+      await act(() => Promise.resolve());
+      expect(document.activeElement).toBe(container.firstElementChild);
+    });
+
+    it('turns editing off with cellEdit={false}', () => {
+      const { container } = renderChart({ cellEdit: false });
+      fireEvent.doubleClick(cell(container, 0, 0));
+      expect(container.querySelector('.qz-cell-editor')).toBeNull();
     });
   });
 });

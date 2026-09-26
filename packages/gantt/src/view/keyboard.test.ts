@@ -133,7 +133,7 @@ describe('moving with the keyboard', () => {
   it('leaves other keys alone', () => {
     const g = make();
     g.rowClick('a');
-    for (const key of ['Enter', 'F2', 'x', 'Tab', '']) expect(press(g, key)).toBe(false);
+    for (const key of ['x', 'Tab', '', 'F3']) expect(press(g, key)).toBe(false);
     expect(press(g, 'ArrowDown', { alt: true })).toBe(false);
     expect(g.keyDown(null as unknown as KeyInput)).toBe(false);
     expect(g.keyDown({ key: 5 } as unknown as KeyInput)).toBe(false);
