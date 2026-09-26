@@ -4,7 +4,7 @@ import type { ViewPreset } from '../timeaxis/presets';
 import type { HeaderCell, TimeAxis } from '../timeaxis/timeAxis';
 import type { ColumnInput, ColumnsState } from './columns';
 import type { DependencyLine } from './dependencies';
-import type { TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
+import type { ProposedChange, TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 
@@ -46,8 +46,18 @@ export interface ViewState {
   readonly today: TodayLine | null;
   /** Non-working time to shade, around the visible part of the timeline. */
   readonly nonWorkingTime: readonly TimeSpan[];
-  /** The bar being dragged or resized, where it would land; `null` when nothing is. */
+  /** What's being dragged, and where it would land; `null` when nothing is. */
   readonly interaction: TaskInteraction | null;
+  /** Which drag interactions are on (from the options), e.g. to show their handles. The same object while unchanged. */
+  readonly interactions: Interactions;
+}
+
+export interface Interactions {
+  readonly drag: boolean;
+  readonly resize: boolean;
+  readonly create: boolean;
+  readonly progress: boolean;
+  readonly link: boolean;
 }
 
 export interface TodayLine {
@@ -106,6 +116,18 @@ export interface GanttOptions {
   taskDrag?: boolean | undefined;
   /** Change a task's duration by dragging the end of its bar. Default `true`. */
   taskResize?: boolean | undefined;
+  /** Give an unscheduled task dates by drawing its bar in its row. Default `true`. */
+  taskDragCreate?: boolean | undefined;
+  /** Change a task's percentage done by dragging the handle at its progress. Default `true`. */
+  progressDrag?: boolean | undefined;
+  /** Add dependencies by dragging from a handle at either end of a bar to another bar. Default `true`. */
+  dependencyCreate?: boolean | undefined;
+  /**
+   * Called for every change a drag proposes (move, resize, create, progress, link), while dragging and on the
+   * drop. Return `false`, or a message to show, to refuse it: the preview shows it as invalid and the drop
+   * changes nothing.
+   */
+  validateChange?: ((change: ProposedChange) => boolean | string) | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,

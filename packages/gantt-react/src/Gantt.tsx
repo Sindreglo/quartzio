@@ -31,33 +31,14 @@ export interface GanttProps extends GanttOptions {
 }
 
 export function Gantt(props: GanttProps): ReactElement {
-  const { className, ref, data, defaultData, onChange } = props;
-  const { preset, startDate, endDate, locale, columns, rowHeight, headerRowHeight } = props;
-  const { showToday, showNonWorkingTime, taskDrag, taskResize } = props;
-  // Key presence, not the value, decides the mode (see GanttProps).
-  const controlled = 'data' in props;
+  const { className, ref } = props;
+  const options = engineOptions(props);
 
   // The controller holds no timers or external resources yet, so it is not destroyed on unmount:
   // StrictMode's mount → unmount → mount would otherwise leave us with a destroyed controller. (Its one deferred
   // report, of the initial scheduling, only starts once it's subscribed to, so a controller StrictMode creates
   // and throws away never reports.)
-  const [gantt] = useState<GanttController>(() =>
-    createGantt({
-      ...(controlled ? { data } : { defaultData }),
-      onChange,
-      preset,
-      startDate,
-      endDate,
-      locale,
-      columns,
-      rowHeight,
-      headerRowHeight,
-      showToday,
-      showNonWorkingTime,
-      taskDrag,
-      taskResize,
-    }),
-  );
+  const [gantt] = useState<GanttController>(() => createGantt(options));
   // The third argument makes server rendering work; the server snapshot is the initial state.
   const state = useSyncExternalStore(gantt.subscribe, gantt.getState, gantt.getState);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -77,41 +58,13 @@ export function Gantt(props: GanttProps): ReactElement {
 
   useImperativeHandle(ref, () => gantt, [gantt]);
 
-  // A layout effect so new data is shown in the same commit (no frame with stale content), and so
-  // event handlers never see a stale onChange.
+  // On every render: the engine compares each option and skips unchanged ones, so no dependency list has to name
+  // them all. Columns and presets compare by value, but functions in them (and validateChange) by identity:
+  // define those outside render. A layout effect, so new data shows in the same commit (no frame with stale
+  // content) and event handlers never see a stale onChange.
   useLayoutEffect(() => {
-    gantt.setOptions({
-      ...(controlled ? { data } : {}),
-      onChange,
-      preset,
-      startDate,
-      endDate,
-      locale,
-      columns,
-      rowHeight,
-      headerRowHeight,
-      showToday,
-      showNonWorkingTime,
-      taskDrag,
-      taskResize,
-    });
-  }, [
-    gantt,
-    controlled,
-    data,
-    onChange,
-    preset,
-    startDate,
-    endDate,
-    locale,
-    columns,
-    rowHeight,
-    headerRowHeight,
-    showToday,
-    showNonWorkingTime,
-    taskDrag,
-    taskResize,
-  ]);
+    gantt.setOptions(options);
+  });
 
   const { timeAxis, header, rows } = state;
   const listWidth = state.columns.totalWidth;
@@ -237,7 +190,10 @@ export function Gantt(props: GanttProps): ReactElement {
           <TimelineBody
             gantt={gantt}
             interaction={state.interaction}
-            interactive={taskDrag !== false || taskResize !== false}
+            interactions={state.interactions}
+            scrollBy={(x, y) => {
+              scrollerRef.current?.scrollBy(x, y);
+            }}
             rows={rows.items}
             dependencies={state.dependencies}
             nonWorkingTime={state.nonWorkingTime}
@@ -296,4 +252,38 @@ function scrollbarSize(root: HTMLElement): number {
   const size = probe.offsetHeight - probe.clientHeight;
   probe.remove();
   return size;
+}
+
+// Every engine option except `data`, passed on every render, so a prop that's removed goes back to its default
+// (a missing key would keep the last value). Checked against GanttOptions below.
+const OPTION_KEYS = [
+  'defaultData',
+  'onChange',
+  'preset',
+  'startDate',
+  'endDate',
+  'locale',
+  'columns',
+  'rowHeight',
+  'headerRowHeight',
+  'showToday',
+  'showNonWorkingTime',
+  'taskDrag',
+  'taskResize',
+  'taskDragCreate',
+  'progressDrag',
+  'dependencyCreate',
+  'validateChange',
+] as const satisfies readonly (keyof GanttOptions)[];
+// Fails to compile when GanttOptions gets an option that isn't listed.
+const _allListed: Exclude<keyof GanttOptions, (typeof OPTION_KEYS)[number] | 'data'> extends never
+  ? true
+  : never = true;
+
+/** The engine options in the props. `data` only when present: its presence makes the chart controlled. */
+function engineOptions(props: GanttProps): GanttOptions {
+  const options: Record<string, unknown> = {};
+  for (const key of OPTION_KEYS) options[key] = props[key];
+  if ('data' in props) options.data = props.data;
+  return options;
 }

@@ -78,7 +78,7 @@ export const demos: Demo[] = [
     id: 'drag',
     title: 'Drag & resize',
     description:
-      'Drag bars to move tasks and their end to resize them, snapped to the time resolution. Automatic tasks get “start no earlier than”; manual ones just move. One drop is one change.',
+      'Drag bars to move and resize them, drag progress, draw bars for unscheduled tasks, and link tasks by dragging between their ends. Snapped to the time resolution, auto-scrolling at the edges, with an optional validator. One drop is one change.',
     Component: DragDemo,
   },
 ];

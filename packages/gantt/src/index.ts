@@ -80,7 +80,15 @@ export { taskDates } from './view/dates';
 // View
 export type { Bar, BarKind } from './view/bars';
 export type { DependencyLine } from './view/dependencies';
-export type { HitArea, TaskInteraction, TimelineHit, TimelinePoint } from './view/interaction';
+export type {
+  BarInteraction,
+  HitArea,
+  LinkInteraction,
+  ProposedChange,
+  TaskInteraction,
+  TimelineHit,
+  TimelinePoint,
+} from './view/interaction';
 export type { TimeSpan } from './view/nonWorking';
 export type {
   BuiltInColumnId,
@@ -98,6 +106,7 @@ export type {
   GanttDataChange,
   GanttOptions,
   HeaderState,
+  Interactions,
   TodayLine,
   Viewport,
   ViewState,

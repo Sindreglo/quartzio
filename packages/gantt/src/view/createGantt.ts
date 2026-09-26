@@ -18,13 +18,14 @@ import {
 import { createNonWorkingView } from './nonWorking';
 import { createRowsView } from './rows';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
-import type { GanttController, GanttOptions, TodayLine, ViewState, Viewport } from './types';
+import type { GanttController, GanttOptions, Interactions, TodayLine, ViewState, Viewport } from './types';
 
 export type {
   GanttController,
   GanttDataChange,
   GanttOptions,
   HeaderState,
+  Interactions,
   ViewState,
   Viewport,
 } from './types';
@@ -44,6 +45,11 @@ interface ViewOptions {
   showNonWorkingTime: boolean;
   taskDrag: boolean;
   taskResize: boolean;
+  taskDragCreate: boolean;
+  progressDrag: boolean;
+  dependencyCreate: boolean;
+  /** The five switches above as one object, kept while they're unchanged. */
+  interactions: Interactions;
 }
 
 const VIEW_KEYS = [
@@ -58,6 +64,9 @@ const VIEW_KEYS = [
   'showNonWorkingTime',
   'taskDrag',
   'taskResize',
+  'taskDragCreate',
+  'progressDrag',
+  'dependencyCreate',
 ] as const;
 
 function toSwitch(value: unknown, fallback: boolean, name: string): boolean {
@@ -76,6 +85,22 @@ function toHeight(value: unknown, fallback: number, name: string): number {
 
 /** Validates the view options, reusing unchanged parts of `previous`. Throws before anything changes. */
 function resolveViewOptions(options: GanttOptions, previous?: ViewOptions): ViewOptions {
+  const resolved = resolveSwitches(options, previous);
+  const interactions: Interactions = {
+    drag: resolved.taskDrag,
+    resize: resolved.taskResize,
+    create: resolved.taskDragCreate,
+    progress: resolved.progressDrag,
+    link: resolved.dependencyCreate,
+  };
+  return {
+    ...resolved,
+    interactions:
+      previous && isEqual(previous.interactions, interactions) ? previous.interactions : interactions,
+  };
+}
+
+function resolveSwitches(options: GanttOptions, previous?: ViewOptions): Omit<ViewOptions, 'interactions'> {
   const has = (key: keyof GanttOptions) => previous === undefined || key in options;
   const timeline = resolveTimeline({
     preset: has('preset') ? options.preset : previous?.timeline.preset,
@@ -110,12 +135,31 @@ function resolveViewOptions(options: GanttOptions, previous?: ViewOptions): View
     taskResize: has('taskResize')
       ? toSwitch(options.taskResize, true, 'taskResize')
       : (previous?.taskResize ?? true),
+    taskDragCreate: has('taskDragCreate')
+      ? toSwitch(options.taskDragCreate, true, 'taskDragCreate')
+      : (previous?.taskDragCreate ?? true),
+    progressDrag: has('progressDrag')
+      ? toSwitch(options.progressDrag, true, 'progressDrag')
+      : (previous?.progressDrag ?? true),
+    dependencyCreate: has('dependencyCreate')
+      ? toSwitch(options.dependencyCreate, true, 'dependencyCreate')
+      : (previous?.dependencyCreate ?? true),
   };
+}
+
+function toValidator(value: unknown): GanttOptions['validateChange'] {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'function')
+    throw new QuartzioError('Gantt options: "validateChange" must be a function.');
+  return value as GanttOptions['validateChange'];
 }
 
 const sameView = (a: ViewOptions, b: ViewOptions) =>
   a.taskDrag === b.taskDrag &&
   a.taskResize === b.taskResize &&
+  a.taskDragCreate === b.taskDragCreate &&
+  a.progressDrag === b.progressDrag &&
+  a.dependencyCreate === b.dependencyCreate &&
   a.showToday === b.showToday &&
   a.showNonWorkingTime === b.showNonWorkingTime &&
   a.timeline === b.timeline &&
@@ -125,6 +169,7 @@ const sameView = (a: ViewOptions, b: ViewOptions) =>
 
 export function createGantt(options: GanttOptions = {}): GanttController {
   let view = resolveViewOptions(options);
+  let validateChange = toValidator(options.validateChange);
   const controlled = 'data' in options;
   // Scheduling writes computed dates back into the data (ADR 0008).
   const project = createProject({}, { propagate: scheduleProject });
@@ -186,6 +231,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       today: todayOn(timeAxis),
       nonWorkingTime: nonWorkingView.spansFor(projectState, timeAxis, viewport, view.showNonWorkingTime),
       interaction: shownInteraction,
+      interactions: view.interactions,
     };
     interactionView = {
       project: projectState,
@@ -193,9 +239,17 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       rows,
       rowIndex,
       rowIds,
+      viewport,
       locale: view.timeline.locale,
-      drag: view.taskDrag,
-      resize: view.taskResize,
+      enabled: {
+        drag: view.taskDrag,
+        resize: view.taskResize,
+        create: view.taskDragCreate,
+        progress: view.progressDrag,
+        link: view.dependencyCreate,
+      },
+      // Read when asked, so a validator set later (or one closing over newer app state) is the one used.
+      validate: (change) => (validateChange ? validateChange(change) : true),
     };
     // A drag on a stale basis (another axis, a changed or hidden task, options turned off) is dropped before
     // anything shows it.
@@ -271,6 +325,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       if (destroyed) return;
       // Validate everything first, so an invalid option changes nothing.
       const nextView = VIEW_KEYS.some((key) => key in next) ? resolveViewOptions(next, view) : view;
+      const nextValidate = 'validateChange' in next ? toValidator(next.validateChange) : validateChange;
       const before = project.getState();
 
       const previousView = view;
@@ -285,6 +340,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         batching = false;
       }
       if ('onChange' in next) binding.setOnChange(next.onChange);
+      validateChange = nextValidate;
       if (!sameView(nextView, previousView) || project.getState() !== before) refresh();
     },
 
@@ -301,6 +357,8 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         return;
       }
       setState(derive(viewport, state.project));
+      // A drag follows the pointer to what's under it now (this is how auto-scrolling moves it).
+      drags.follow();
     },
 
     transact(fn) {

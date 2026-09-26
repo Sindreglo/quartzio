@@ -291,6 +291,69 @@ describe('<Gantt />', () => {
       expect(onChange).not.toHaveBeenCalled();
     });
 
+    it('shows handles for linking and progress, unless turned off', () => {
+      const { container, rerender } = renderDrag();
+      expect(container.querySelectorAll('.qz-link-handle')).toHaveLength(2);
+      expect(container.querySelectorAll('.qz-progress-handle')).toHaveLength(1);
+      rerender(
+        <Gantt
+          defaultData={dragData}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          dependencyCreate={false}
+          progressDrag={false}
+        />,
+      );
+      expect(container.querySelectorAll('.qz-link-handle, .qz-progress-handle')).toHaveLength(0);
+    });
+
+    it('draws a dependency line while linking, marked invalid onto the same task', () => {
+      const { container } = renderDrag();
+      const timeline = body(container);
+      fireEvent.pointerDown(timeline, { ...pointer, clientX: 100, clientY: 18 }); // just after the bar's end
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 60, clientY: 18 }); // back onto the same bar
+      const draft = container.querySelector('.qz-link-draft');
+      expect(draft?.classList.contains('qz-draft--invalid')).toBe(true);
+      expect(draft?.querySelector('.qz-dependency')?.getAttribute('d')).toBe('M96 18 L60 18');
+      expect(container.querySelector('.qz-drag-tooltip--pointer')?.textContent).toBe(
+        'Can’t link a task to itself',
+      );
+      fireEvent.pointerUp(timeline, { ...pointer, clientX: 60, clientY: 18 });
+      expect(container.querySelector('.qz-link-draft')).toBeNull();
+    });
+
+    it('goes back to the default when a prop is removed', () => {
+      const props = {
+        defaultData: dragData,
+        preset: 'weekAndDay',
+        startDate: '2026-10-05',
+        endDate: '2026-11-02',
+      };
+      const { container, rerender } = render(<Gantt {...props} taskDrag={false} dependencyCreate={false} />);
+      const timeline = body(container);
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      expect(timeline.dataset.hit).toBe('');
+      rerender(<Gantt {...props} />);
+      fireEvent.pointerMove(timeline, { ...pointer, clientX: 50, clientY: 18 });
+      expect(timeline.dataset.hit).toBe('bar');
+      expect(container.querySelectorAll('.qz-link-handle')).toHaveLength(2);
+    });
+
+    it('produces no new state when rendered again with the same props', () => {
+      const ref = createRef<GanttController>();
+      const props = {
+        defaultData: dragData,
+        preset: 'weekAndDay',
+        startDate: '2026-10-05',
+        endDate: '2026-11-02',
+      };
+      const { rerender } = render(<Gantt ref={ref} {...props} columns={['name', 'duration']} />);
+      const state = ref.current?.getState();
+      rerender(<Gantt ref={ref} {...props} columns={['name', 'duration']} />); // an equal inline array
+      expect(ref.current?.getState()).toBe(state);
+    });
+
     it('drops the drag on Escape, changing nothing', () => {
       const onChange = vi.fn();
       const { container } = renderDrag({ onChange });

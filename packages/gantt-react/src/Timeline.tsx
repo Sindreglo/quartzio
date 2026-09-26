@@ -1,16 +1,18 @@
 import type {
-  Bar,
   DependencyLine,
   GanttController,
   HeaderCell,
   HeaderState,
+  Interactions,
   Row,
   TaskInteraction,
   TimelinePoint,
   TimeSpan,
   TodayLine,
 } from '@quartzio/gantt';
-import { memo, type PointerEvent, type ReactElement, useEffect, useId } from 'react';
+import { memo, type PointerEvent, type ReactElement, useEffect, useId, useRef } from 'react';
+import { BarHandles, TaskBar } from './Bars';
+import { DraftBar, DraftLink } from './Drafts';
 
 // Rows get the same array while scrolling within the rendered window, so memo skips most re-renders.
 const HeaderRow = memo(function HeaderRow({
@@ -106,65 +108,33 @@ const DependencyLayer = memo(function DependencyLayer({
   );
 });
 
-function TaskBar({ bar }: { bar: Bar }): ReactElement {
-  if (bar.kind === 'milestone') {
-    return (
-      <div className="qz-bar qz-bar--milestone" style={{ left: bar.x }} title={bar.label}>
-        <span className="qz-bar__label">{bar.label}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={`qz-bar qz-bar--${bar.kind}`} style={{ left: bar.x, width: bar.width }} title={bar.label}>
-      {bar.kind === 'task' && (
-        <>
-          <div className="qz-bar__progress" style={{ width: `${String(bar.progress * 100)}%` }} />
-          <span className="qz-bar__label">{bar.label}</span>
-        </>
-      )}
-    </div>
-  );
-}
-
 // Rows keep their identity while unchanged (bars included), so memo skips them on most updates. Only the row
 // of a dragged bar re-renders when a drag starts or ends.
 const TimelineRow = memo(function TimelineRow({
   row,
   dragging,
+  interactions,
 }: {
   row: Row;
   dragging: boolean;
+  interactions: Interactions;
 }): ReactElement {
+  // A row to draw a bar in (an unscheduled task): touching it draws instead of scrolling.
+  const drawable = interactions.create && !row.bar && !row.hasChildren;
+  const className = ['qz-timeline__row'];
+  if (dragging) className.push('qz-timeline__row--dragging');
+  if (drawable) className.push('qz-timeline__row--drawable');
   return (
     <div
-      className={dragging ? 'qz-timeline__row qz-timeline__row--dragging' : 'qz-timeline__row'}
+      className={className.join(' ')}
       data-key={row.key}
       style={{ transform: `translateY(${String(row.y)}px)`, height: row.height }}
     >
       {row.bar && <TaskBar bar={row.bar} />}
+      {row.bar && <BarHandles bar={row.bar} interactions={interactions} />}
     </div>
   );
 });
-
-/** The dragged bar where it would land, in its row, with its new dates above it. */
-function DraftBar({ interaction, row }: { interaction: TaskInteraction; row: Row }): ReactElement {
-  const { bar } = interaction;
-  return (
-    <div
-      className="qz-timeline__row qz-timeline__draft"
-      style={{ transform: `translateY(${String(row.y)}px)`, height: row.height }}
-    >
-      <TaskBar bar={bar} />
-      {/* Above the bar, except in the first row, where the body would clip it. */}
-      <div
-        className={row.index === 0 ? 'qz-drag-tooltip qz-drag-tooltip--below' : 'qz-drag-tooltip'}
-        style={{ left: bar.x }}
-      >
-        {interaction.label}
-      </div>
-    </div>
-  );
-}
 
 /** Timeline coordinates of a pointer event: the body moves with scrolling, so its box is the origin. */
 function pointOf(event: PointerEvent<HTMLElement>): TimelinePoint {
@@ -184,13 +154,16 @@ export function TimelineBody({
   nonWorkingTime,
   today,
   interaction,
-  interactive,
+  interactions,
+  scrollBy,
   width,
   height,
 }: {
   gantt: GanttController;
-  /** Dragging or resizing is on: touching a bar drags it instead of scrolling. */
-  interactive: boolean;
+  /** Which drags are on: their handles are shown, and touching a bar drags it instead of scrolling. */
+  interactions: Interactions;
+  /** Scrolls the chart (for auto-scrolling near an edge while dragging). */
+  scrollBy: (x: number, y: number) => void;
   rows: readonly Row[];
   dependencies: readonly DependencyLine[];
   nonWorkingTime: readonly TimeSpan[];
@@ -200,6 +173,24 @@ export function TimelineBody({
   height: number;
 }): ReactElement {
   const dragging = interaction !== null;
+  const scroll = useRef(scrollBy);
+  useEffect(() => {
+    scroll.current = scrollBy;
+  });
+
+  // Auto-scroll: the engine says how fast, near an edge; scroll each frame. The engine follows the scrolling
+  // itself (the pointer is over another part of the chart then), and says when to stop.
+  const speed = interaction?.autoScroll;
+  useEffect(() => {
+    if (!speed || (speed.x === 0 && speed.y === 0)) return;
+    let frame = requestAnimationFrame(function step() {
+      scroll.current(speed.x, speed.y);
+      frame = requestAnimationFrame(step);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [speed]);
   // Escape drops a drag without changing anything, and then goes no further (it would close a dialog around the
   // chart, say). Listened for first, in the capture phase.
   useEffect(() => {
@@ -216,7 +207,9 @@ export function TimelineBody({
     };
   }, [dragging, gantt]);
 
-  const draftRow = interaction && rows.find((row) => row.key === interaction.rowKey);
+  const draftRow =
+    interaction?.kind !== 'link' ? rows.find((row) => row.key === interaction?.rowKey) : undefined;
+  const interactive = Object.values(interactions).some(Boolean);
   return (
     <div
       className="qz-timeline__body"
@@ -253,10 +246,18 @@ export function TimelineBody({
       <NonWorkingLayer spans={nonWorkingTime} />
       <DependencyLayer lines={dependencies} width={width} height={height} />
       {rows.map((row) => (
-        <TimelineRow key={row.key} row={row} dragging={row.key === interaction?.rowKey} />
+        <TimelineRow
+          key={row.key}
+          row={row}
+          dragging={interaction?.kind !== 'link' && row.key === interaction?.rowKey}
+          interactions={interactions}
+        />
       ))}
       {today && <div className="qz-today" style={{ left: today.x }} />}
-      {interaction && draftRow && <DraftBar interaction={interaction} row={draftRow} />}
+      {interaction && interaction.kind !== 'link' && draftRow && (
+        <DraftBar interaction={interaction} row={draftRow} />
+      )}
+      {interaction?.kind === 'link' && <DraftLink interaction={interaction} width={width} height={height} />}
     </div>
   );
 }

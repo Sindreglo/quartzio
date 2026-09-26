@@ -1,4 +1,4 @@
-import { type Patch, type ProjectInput, VIEW_PRESETS } from '@quartzio/gantt';
+import { type Patch, type ProjectInput, type ProposedChange, VIEW_PRESETS } from '@quartzio/gantt';
 import { Gantt } from '@quartzio/gantt-react';
 import { useState } from 'react';
 
@@ -22,7 +22,7 @@ const initial: ProjectInput = {
       duration: 2,
     },
     { id: 'launch', name: 'Launch (milestone)', duration: 0 },
-    { id: 'idea', name: 'Idea (unscheduled: nothing to drag)' },
+    { id: 'idea', name: 'Idea (unscheduled: draw its bar)' },
   ],
   dependencies: [
     { id: 'd1', from: 'design', to: 'develop' },
@@ -32,13 +32,25 @@ const initial: ProjectInput = {
   ],
 };
 
+const LIMIT = Date.UTC(2026, 9, 30);
+
+/** An example validator: nothing may start after 30 October. */
+const noLateStarts = (change: ProposedChange) =>
+  (change.kind === 'move' || change.kind === 'create') && change.start >= LIMIT
+    ? 'Must start before 30 Oct'
+    : true;
+
 /** What a change did, in words: which fields of which tasks (a drop is one change). */
 function describe(patch: Patch | null): string {
-  if (!patch) return 'Drag a bar to move it, or its end to resize it. Escape cancels.';
+  if (!patch) {
+    return 'Drag a bar to move it, its end to resize it, its progress handle, or from a handle at either end to another bar to link them. Draw a bar in the Idea row. Escape cancels.';
+  }
   const changed = patch.operations.flatMap((op) =>
-    op.type === 'update' && op.store === 'tasks'
-      ? [`${String(op.id)}: ${Object.keys(op.changes).join(', ')}`]
-      : [],
+    op.type === 'add' && op.store === 'dependencies'
+      ? [`new dependency ${String(op.record.from)} → ${String(op.record.to)} (${op.record.type})`]
+      : op.type === 'update' && op.store === 'tasks'
+        ? [`${String(op.id)}: ${Object.keys(op.changes).join(', ')}`]
+        : [],
   );
   return `Last change: ${changed.join(' · ')}`;
 }
@@ -53,6 +65,10 @@ export function DragDemo() {
   const [lastPatch, setLastPatch] = useState<Patch | null>(null);
   const [taskDrag, setTaskDrag] = useState(true);
   const [taskResize, setTaskResize] = useState(true);
+  const [taskDragCreate, setTaskDragCreate] = useState(true);
+  const [progressDrag, setProgressDrag] = useState(true);
+  const [dependencyCreate, setDependencyCreate] = useState(true);
+  const [validate, setValidate] = useState(false);
   const [preset, setPreset] = useState('weekAndDay');
 
   return (
@@ -91,6 +107,25 @@ export function DragDemo() {
           />
           Drag the end to resize
         </label>
+        {(
+          [
+            ['Draw bars', taskDragCreate, setTaskDragCreate],
+            ['Drag progress', progressDrag, setProgressDrag],
+            ['Link by dragging', dependencyCreate, setDependencyCreate],
+            ['Refuse starts after 30 Oct', validate, setValidate],
+          ] as const
+        ).map(([label, checked, set]) => (
+          <label key={label}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) => {
+                set(event.target.checked);
+              }}
+            />
+            {label}
+          </label>
+        ))}
         <button
           onClick={() => {
             setData(initial);
@@ -109,6 +144,10 @@ export function DragDemo() {
         preset={preset}
         taskDrag={taskDrag}
         taskResize={taskResize}
+        taskDragCreate={taskDragCreate}
+        progressDrag={progressDrag}
+        dependencyCreate={dependencyCreate}
+        validateChange={validate ? noLateStarts : undefined}
         locale="en-GB"
         style={{ height: 360 }}
       />

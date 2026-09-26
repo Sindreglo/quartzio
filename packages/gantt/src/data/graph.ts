@@ -87,7 +87,17 @@ export function getScheduleGraph(state: ProjectState): ScheduleGraph {
   let byDependencies = graphCache.get(tree);
   const cached = byDependencies?.get(dependencyKey);
   if (cached) return cached;
+  const graph = buildScheduleGraph(state);
+  if (!byDependencies) {
+    byDependencies = new WeakMap();
+    graphCache.set(tree, byDependencies);
+  }
+  byDependencies.set(dependencyKey, graph);
+  return graph;
+}
 
+/** Builds the graph (uncached), optionally with one more dependency, e.g. to try it for cycles. */
+function buildScheduleGraph(state: ProjectState, extra?: { from: Id; to: Id }): ScheduleGraph {
   const ids = state.tasks.order;
   const indexOf = new Map<Id, number>();
   ids.forEach((id, i) => indexOf.set(id, i));
@@ -114,7 +124,10 @@ export function getScheduleGraph(state: ProjectState): ScheduleGraph {
       edge(2 * i + 1, 2 * p + 1);
     }
   });
-  for (const dependency of state.dependencies.byId.values()) {
+  const ends: Iterable<{ from: Id; to: Id }> = extra
+    ? [...state.dependencies.byId.values(), extra]
+    : state.dependencies.byId.values();
+  for (const dependency of ends) {
     const from = indexOf.get(dependency.from);
     const to = indexOf.get(dependency.to);
     if (from !== undefined && to !== undefined) edge(2 * from + 1, 2 * to);
@@ -133,13 +146,7 @@ export function getScheduleGraph(state: ProjectState): ScheduleGraph {
   }
   if (size < nodeCount) throw cycleError(ids, head, next, target, inDegree);
 
-  const graph: ScheduleGraph = { ids, order };
-  if (!byDependencies) {
-    byDependencies = new WeakMap();
-    graphCache.set(tree, byDependencies);
-  }
-  byDependencies.set(dependencyKey, graph);
-  return graph;
+  return { ids, order };
 }
 
 /**
@@ -182,4 +189,27 @@ function cycleError(
     `Dependencies form a cycle: ${names.join(' → ')}. (A task can't depend on its own parent or child, ` +
       `and a task inherits the dependencies of its parents.)`,
   );
+}
+
+const cycleCache = new WeakMap<ProjectState, Map<string, boolean>>();
+
+/**
+ * Whether a dependency from `from` to `to` would form a cycle (also through the hierarchy). Tries it: builds the
+ * graph with it added, in O(n). Cached per state and pair, since a drag asks again on every pointer move.
+ */
+export function wouldCreateCycle(state: ProjectState, from: Id, to: Id): boolean {
+  let byPair = cycleCache.get(state);
+  if (!byPair) cycleCache.set(state, (byPair = new Map<string, boolean>()));
+  const key = `${typeof from}:${String(from)}→${typeof to}:${String(to)}`;
+  const known = byPair.get(key);
+  if (known !== undefined) return known;
+  let cycle = false;
+  try {
+    buildScheduleGraph(state, { from, to });
+  } catch (error) {
+    if (!(error instanceof QuartzioError)) throw error;
+    cycle = true;
+  }
+  byPair.set(key, cycle);
+  return cycle;
 }

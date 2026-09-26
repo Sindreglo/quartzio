@@ -21,6 +21,7 @@
   --qz-milestone-size: 14px;
   --qz-today-color: #ef4444;
   --qz-nonworking-color: rgb(15 23 42 / 4%);
+  --qz-invalid-color: #dc2626;
   --qz-tooltip-background: #1f2937;
   --qz-tooltip-color: #ffffff;
   --qz-dependency-color: #8b93a7;
@@ -396,8 +397,18 @@
 }
 
 .qz-timeline__body[data-hit='resize-end'],
-.qz-timeline__body[data-dragging='resize'] {
+.qz-timeline__body[data-hit='progress'],
+.qz-timeline__body[data-dragging='resize'],
+.qz-timeline__body[data-dragging='progress'] {
   cursor: ew-resize;
+}
+
+.qz-timeline__body[data-hit='create'],
+.qz-timeline__body[data-hit='link-start'],
+.qz-timeline__body[data-hit='link-end'],
+.qz-timeline__body[data-dragging='create'],
+.qz-timeline__body[data-dragging='link'] {
+  cursor: crosshair;
 }
 
 .qz-timeline__body[data-dragging='move'] {
@@ -409,8 +420,12 @@
   user-select: none;
 }
 
-/* A touch on a bar drags it instead of scrolling the chart (only while dragging or resizing is on). */
-.qz-timeline__body[data-interactive] .qz-bar {
+/*
+ * A touch on a bar (or in a row to draw a bar in) drags instead of scrolling the chart, while dragging is on.
+ * Link handles sit outside bars and only show on hover, so linking is for mouse and pen for now.
+ */
+.qz-timeline__body[data-interactive] .qz-bar,
+.qz-timeline__row--drawable {
   touch-action: none;
 }
 
@@ -432,6 +447,71 @@
   white-space: nowrap;
   background: var(--qz-tooltip-background);
   border-radius: 4px;
+}
+
+/* A refused drop: the preview says so (the tooltip then shows why). */
+.qz-draft--invalid .qz-bar {
+  background: var(--qz-invalid-color);
+}
+
+.qz-link-draft {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.qz-link-draft.qz-draft--invalid .qz-dependency {
+  stroke: var(--qz-invalid-color);
+  stroke-dasharray: 4 3;
+}
+
+.qz-link-draft.qz-draft--invalid .qz-dependency__arrow {
+  fill: var(--qz-invalid-color);
+}
+
+/* Next to the pointer while drawing a dependency. */
+.qz-drag-tooltip--pointer {
+  z-index: 3;
+  bottom: auto;
+  transform: translate(12px, -140%);
+}
+
+/* Handles, shown while hovering a row (and link handles while drawing one): where to press is up to the engine. */
+.qz-link-handle,
+.qz-progress-handle {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.qz-link-handle {
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  background: var(--qz-color-background);
+  border: 1.5px solid var(--qz-dependency-color);
+  border-radius: 50%;
+}
+
+.qz-progress-handle {
+  top: calc(78% - 4px);
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--qz-bar-progress-color);
+  border-left: 5px solid transparent;
+}
+
+.qz-timeline__row:hover .qz-link-handle,
+.qz-timeline__row:hover .qz-progress-handle,
+.qz-timeline__body[data-dragging='link'] .qz-link-handle {
+  opacity: 1;
 }
 
 .qz-drag-tooltip--below {

@@ -356,9 +356,21 @@ async function gestureChecks(send) {
   return problems;
 }
 
+// Scrolls so the bar of the task with this row key starts 40 px into the visible timeline (clear of the
+// auto-scroll zones at the edges), and waits for it to settle.
+async function reveal(evaluate, key) {
+  await evaluate(`(() => {
+    const bar = document.querySelector('.qz-timeline__row[data-key="${key}"] .qz-bar');
+    const list = document.querySelector('.qz-list__body');
+    const scroller = document.querySelector('.qz-gantt__scroller');
+    if (bar && list) scroller.scrollLeft += bar.getBoundingClientRect().left - list.getBoundingClientRect().right - 40;
+  })()`);
+  await sleep(400);
+}
+
 // Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
 // scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
-// the day), the bar must sit on a day boundary, and nothing may scroll during the drag.
+// the day), and the bar must sit on a day boundary.
 async function dragChecks(send, demo) {
   if (demo !== 'drag') return [];
   const evaluate = async (expression) =>
@@ -381,8 +393,8 @@ async function dragChecks(send, demo) {
     };
   })()`;
   // Let earlier checks' scrolling (a touch fling keeps going for a while) come to rest first.
-  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft = 0`);
   await sleep(1000);
+  await reveal(evaluate, 's:vendor');
   const before = await evaluate(measure);
   if (!before) return ['drag demo: no Vendor bar to drag'];
   const mouse = (type, x, y) =>
@@ -396,13 +408,8 @@ async function dragChecks(send, demo) {
     });
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.x, y: before.y });
   await mouse('mousePressed', before.x, before.y);
-  let scrolled = false;
-  for (let step = 1; step <= 8; step++) {
+  for (let step = 1; step <= 8; step++)
     await mouse('mouseMoved', before.x + (step * 2 * before.tick) / 8, before.y);
-    if ((await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft`)) !== before.scroll) {
-      scrolled = true;
-    }
-  }
   // Mid-drag: the tooltip with the new dates is shown, inside the visible part of the timeline.
   const tooltip = await evaluate(`(() => {
     const tip = document.querySelector('.qz-drag-tooltip');
@@ -416,7 +423,6 @@ async function dragChecks(send, demo) {
   const after = await evaluate(measure);
   const problems = [];
   if (!after) return ['drag demo: the Vendor bar is gone after dragging'];
-  if (scrolled) problems.push('drag demo: the timeline scrolled during the drag');
   if (!tooltip?.visible)
     problems.push(`drag demo: no visible tooltip while dragging (${JSON.stringify(tooltip)})`);
   if (before.start !== '7 Oct 2026' || after.start !== '9 Oct 2026') {
@@ -426,6 +432,84 @@ async function dragChecks(send, demo) {
   }
   if (!after.ticks.some((tick) => Math.abs(tick - after.left) <= 1)) {
     problems.push('drag demo: the dropped bar is not on a day boundary');
+  }
+  problems.push(...(await moreDragChecks(evaluate, mouse)));
+  return problems;
+}
+
+// The other drags, with a real mouse: progress, linking, drawing a bar, and auto-scrolling at the edge.
+async function moreDragChecks(evaluate, mouse) {
+  const problems = [];
+  const box = (selector) =>
+    evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) return null;
+      const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    })()`);
+  const gesture = async (from, to, hold = 0) => {
+    await mouse('mouseMoved', from.x, from.y);
+    await mouse('mousePressed', from.x, from.y);
+    for (let step = 1; step <= 6; step++) {
+      await mouse('mouseMoved', from.x + ((to.x - from.x) * step) / 6, from.y + ((to.y - from.y) * step) / 6);
+    }
+    if (hold) await sleep(hold);
+    await mouse('mouseReleased', to.x, to.y);
+    await sleep(400);
+  };
+  const bar = (key) => `.qz-timeline__row[data-key="${key}"] .qz-bar`;
+
+  // Progress: drag Design's handle (at 0 %) a third of the way along.
+  await reveal(evaluate, 's:design');
+  const design = await box(bar('s:design'));
+  if (design) {
+    await gesture(
+      { x: design.left + 1, y: design.bottom - 2 },
+      { x: design.left + design.width / 3, y: design.bottom - 2 },
+    );
+    const progress = await box(`${bar('s:design')} .qz-bar__progress`);
+    if (!progress || progress.width < design.width / 4)
+      problems.push('drag demo: dragging the progress handle did nothing');
+  } else problems.push('drag demo: no Design bar');
+
+  // Link: from Design's end handle onto Vendor (close together, so both are in view even at 700 px).
+  await reveal(evaluate, 's:design');
+  const arrows = await evaluate(`document.querySelectorAll('.qz-dependencies .qz-dependency').length`);
+  const from = await box(bar('s:design'));
+  const onto = await box(bar('s:vendor'));
+  if (from && onto) {
+    await gesture(
+      { x: from.right + 5, y: from.top + from.height / 2 },
+      { x: onto.left + 3, y: onto.top + onto.height / 2 },
+    );
+    const now = await evaluate(`document.querySelectorAll('.qz-dependencies .qz-dependency').length`);
+    if (now !== arrows + 1)
+      problems.push(`drag demo: linking by dragging gave ${String(now - arrows)} new arrows instead of 1`);
+  } else problems.push('drag demo: no Design or Vendor bar to link');
+
+  // Create: draw a bar in the Idea row.
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft = 0`);
+  await sleep(300);
+  const idea = await box('.qz-timeline__row[data-key="s:idea"]');
+  const view = await box('.qz-gantt__scroller');
+  const list = await box('.qz-list__body');
+  if (idea && view && list) {
+    const y = idea.top + idea.height / 2;
+    await gesture({ x: list.right + 20, y }, { x: list.right + 90, y });
+    if (!(await box(bar('s:idea')))) problems.push('drag demo: drawing in the Idea row gave no bar');
+  }
+
+  // Auto-scroll: hold a bar past the right edge; the chart scrolls on its own (if there is anything to scroll).
+  await reveal(evaluate, 's:develop');
+  const [before, max] = await evaluate(
+    `(() => { const s = document.querySelector('.qz-gantt__scroller'); return [s.scrollLeft, s.scrollWidth - s.clientWidth]; })()`,
+  );
+  const develop = await box(bar('s:develop'));
+  if (develop && view && before < max - 1) {
+    const y = develop.top + develop.height / 2;
+    await gesture({ x: develop.left + 4, y }, { x: view.right + 20, y }, 600);
+    const after = await evaluate(`document.querySelector('.qz-gantt__scroller').scrollLeft`);
+    if (!(after > before)) problems.push('drag demo: holding a bar past the edge did not scroll');
   }
   return problems;
 }
