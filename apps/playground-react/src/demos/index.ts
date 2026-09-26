@@ -6,6 +6,7 @@ import { DataModelDemo } from './data-model';
 import { DependenciesDemo } from './dependencies';
 import { DragDemo } from './drag';
 import { SchedulingDemo } from './scheduling';
+import { SelectionDemo } from './selection';
 import { TaskListDemo } from './task-list';
 import { TimeAxisDemo } from './timeaxis';
 
@@ -80,5 +81,12 @@ export const demos: Demo[] = [
     description:
       'Drag bars to move and resize them, drag progress, draw bars for unscheduled tasks, and link tasks by dragging between their ends. Snapped to the time resolution, auto-scrolling at the edges, with an optional validator. One drop is one change.',
     Component: DragDemo,
+  },
+  {
+    id: 'selection',
+    title: 'Selection & keyboard',
+    description:
+      'Click, Ctrl/Cmd-click and Shift-click rows; with the chart focused, move with the arrow keys, expand and collapse with Left/Right, select all with Ctrl/Cmd+A, delete with Delete, and undo with Ctrl/Cmd+Z. Every change (a drop, a deletion) is one undo step.',
+    Component: SelectionDemo,
   },
 ];

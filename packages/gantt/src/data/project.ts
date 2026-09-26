@@ -54,6 +54,8 @@ export interface Project {
    * The result is validated (parents and dependency ends must exist, no cycles); on failure nothing changes.
    */
   apply: (operations: readonly Operation[]) => Patch | null;
+  /** Like `apply`, but only computes the result without committing it (`base` as for `plan`). */
+  planApply: (operations: readonly Operation[], base?: ProjectState) => PlannedChange | null;
   toData: () => ProjectData;
 }
 
@@ -103,6 +105,22 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
           inverse: [...second.inverse, ...first.inverse],
         }
       : first;
+
+  /** Applies operations and what propagate adds, validated, without committing. */
+  const applyCompleted = (base: ProjectState, operations: readonly Operation[]): PlannedChange => {
+    const result = applyOperations(base, operations);
+    // End before start is checked after propagation, which can repair it (like transact does).
+    assertValidState(result.state, result.touched, { taskDates: false });
+    const completed = complete(result.state, operations);
+    for (const id of result.touched.tasks) {
+      const task = completed.state.tasks.byId.get(id);
+      if (task) assertTaskDates(task);
+    }
+    return {
+      state: completed.state,
+      patch: join({ operations: [...operations], inverse: result.inverse }, completed.patch),
+    };
+  };
 
   let state = complete(createProjectState(input), null).state;
   let running = false;
@@ -159,19 +177,16 @@ export function createProject(input: ProjectInput = {}, options: ProjectOptions 
       commit(planned.state, planned.patch);
       return planned.patch;
     },
+    planApply(operations, base = state) {
+      assertNotRunning();
+      if (operations.length === 0) return null;
+      return applyCompleted(base, operations);
+    },
     apply(operations) {
       assertNotRunning();
       if (operations.length === 0) return null;
-      const result = applyOperations(state, operations);
-      // End before start is checked after propagation, which can repair it (like transact does).
-      assertValidState(result.state, result.touched, { taskDates: false });
-      const completed = complete(result.state, operations);
-      for (const id of result.touched.tasks) {
-        const task = completed.state.tasks.byId.get(id);
-        if (task) assertTaskDates(task);
-      }
-      const patch = join({ operations: [...operations], inverse: result.inverse }, completed.patch);
-      commit(completed.state, patch);
+      const { state: next, patch } = applyCompleted(state, operations);
+      commit(next, patch);
       return patch;
     },
     toData: () => toProjectData(state),

@@ -6,6 +6,7 @@ import { taskDates, type TaskDates } from './dates';
 import type { TimeAxis } from '../timeaxis/timeAxis';
 import { computeBar, sameBar, type Bar } from './bars';
 import type { ResolvedColumns } from './columns';
+import type { Selection } from './selection';
 import type { Viewport } from './types';
 
 /** A string key per task for rendering lists: tasks 1 and "1" are different. */
@@ -30,6 +31,9 @@ export interface Row {
   readonly cells: readonly string[];
   /** The task's bar on the timeline, or `null` for unscheduled tasks. */
   readonly bar: Bar | null;
+  readonly selected: boolean;
+  /** The keyboard cursor is on this row. */
+  readonly active: boolean;
 }
 
 export interface RowsState {
@@ -54,6 +58,7 @@ export interface RowsInput {
   readonly columns: ResolvedColumns;
   readonly locale: string | undefined;
   readonly timeAxis: TimeAxis;
+  readonly selection: Selection;
 }
 
 /** Assumed viewport height before it has been measured (and when rendering on the server). */
@@ -119,7 +124,17 @@ export function createRowsView(): {
   };
 
   const rowsFor = (input: RowsInput): RowsState => {
-    const { project, collapsed, collapsedVersion, viewport, rowHeight, columns, locale, timeAxis } = input;
+    const {
+      project,
+      collapsed,
+      collapsedVersion,
+      viewport,
+      rowHeight,
+      columns,
+      locale,
+      timeAxis,
+      selection,
+    } = input;
 
     const visibleKey = [project.tasks, collapsedVersion];
     if (!visibleCache || visibleKey.some((part, i) => part !== visibleCache?.key[i])) {
@@ -133,7 +148,7 @@ export function createRowsView(): {
     const visibleFirst = clamp(Math.floor(viewport.scrollTop / rowHeight));
     const visibleLast = clamp(Math.ceil((viewport.scrollTop + height) / rowHeight));
 
-    const key = [visible, project, rowHeight, columns, locale, timeAxis];
+    const key = [visible, project, rowHeight, columns, locale, timeAxis, selection];
     if (
       windowCache &&
       key.every((part, i) => part === windowCache?.key[i]) &&
@@ -177,6 +192,8 @@ export function createRowsView(): {
         dates: rowDates,
         cells: columns.values.map((value) => value(context)),
         bar: computeBar(task, rowDates, hasChildren, timeAxis),
+        selected: selection.set.has(id),
+        active: selection.active === id,
       };
       const previous = previousRows.get(id);
       const same =
@@ -186,6 +203,8 @@ export function createRowsView(): {
         previous.depth === row.depth &&
         previous.expanded === row.expanded &&
         previous.hasChildren === row.hasChildren &&
+        previous.selected === row.selected &&
+        previous.active === row.active &&
         sameDates(previous.dates, row.dates) &&
         sameCells(previous.cells, row.cells) &&
         sameBar(previous.bar, row.bar);

@@ -9,6 +9,9 @@
   --qz-color-grid-line: #eef0f3;
   --qz-color-header-background: #f9fafb;
   --qz-color-row-hover: #f5f7fb;
+  /* Translucent: in the timeline it lies over the dependency lines. */
+  --qz-color-row-selected: rgb(79 91 213 / 12%);
+  --qz-color-focus: #4f5bd5;
   --qz-header-font-size: 12px;
   --qz-cell-padding: 8px;
   --qz-tree-indent: 18px;
@@ -269,6 +272,30 @@
 
 .qz-grid__row:hover {
   background: var(--qz-color-row-hover);
+}
+
+/* Selected rows, in both halves. No text selection: Shift-click selects rows. */
+.qz-grid__body {
+  user-select: none;
+}
+
+.qz-grid__row[aria-selected='true'],
+.qz-timeline__row--selected {
+  background: var(--qz-color-row-selected);
+}
+
+/* The keyboard cursor, while the chart has focus (the chart itself when there's no cursor yet). */
+.qz-gantt:focus {
+  outline: none;
+}
+
+.qz-gantt:focus-within .qz-grid__row--active {
+  box-shadow: inset 0 0 0 2px var(--qz-color-focus);
+}
+
+.qz-gantt:focus-visible:not(:has(.qz-grid__row--active)) {
+  outline: 2px solid var(--qz-color-focus);
+  outline-offset: -2px;
 }
 
 .qz-grid__cell {

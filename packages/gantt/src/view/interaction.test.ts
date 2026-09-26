@@ -232,7 +232,9 @@ describe('the interaction itself', () => {
     const g = make();
     g.pointerMove({ x: 100, y: 18 });
     g.pointerUp({ x: 100, y: 18 });
-    expect(g.pointerDown({ x: 20, y: 18 })).toBe(false); // nothing there
+    g.pointerDown({ x: 20, y: 18 }); // nothing there: a press (a click selects the row), not a drag
+    g.pointerMove({ x: 60, y: 18 });
+    expect(g.getState().interaction).toBeNull();
     expect(g.pointerDown({ x: 50, y: 18 })).toBe(true);
     expect(g.pointerDown({ x: 94, y: 18 })).toBe(true);
     g.pointerMove({ x: 126, y: 18 });
@@ -244,7 +246,9 @@ describe('the interaction itself', () => {
     expect(g.hitTest({ x: 94, y: 18 })).toEqual({ taskId: 'm', area: 'bar' }); // the whole bar moves
     g.setOptions({ taskDrag: false });
     expect(g.hitTest({ x: 50, y: 18 })).toBeNull();
-    expect(g.pointerDown({ x: 50, y: 18 })).toBe(false);
+    g.pointerDown({ x: 50, y: 18 });
+    g.pointerMove({ x: 90, y: 18 });
+    expect(g.getState().interaction).toBeNull();
     g.setOptions({ taskResize: true });
     expect(g.hitTest({ x: 94, y: 18 })).toEqual({ taskId: 'm', area: 'resize-end' });
   });

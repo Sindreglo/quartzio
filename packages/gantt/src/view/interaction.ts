@@ -87,7 +87,7 @@ export interface LinkInteraction extends InteractionBase {
 export type TaskInteraction = BarInteraction | LinkInteraction;
 
 /** Movement (px) below which a press and release is a click, not a drag. */
-const CLICK_TOLERANCE = 3;
+export const CLICK_TOLERANCE = 3;
 /** Hit targets are at least this wide, so short bars can still be grabbed. */
 const MIN_HIT_WIDTH = 6;
 /** The resize handle at a bar's end; less on short bars, so their middle can still be moved. */

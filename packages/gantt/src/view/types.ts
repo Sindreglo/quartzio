@@ -5,8 +5,11 @@ import type { HeaderCell, TimeAxis } from '../timeaxis/timeAxis';
 import type { ColumnInput, ColumnsState } from './columns';
 import type { DependencyLine } from './dependencies';
 import type { ProposedChange, TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
+import type { HistoryState } from './history';
+import type { KeyInput } from './keyboard';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
+import type { KeyModifiers } from './selection';
 
 /**
  * The visible part of the timeline body: its size (excluding the task list and the header) and the scroll
@@ -50,6 +53,12 @@ export interface ViewState {
   readonly interaction: TaskInteraction | null;
   /** Which drag interactions are on (from the options), e.g. to show their handles. The same object while unchanged. */
   readonly interactions: Interactions;
+  /** Whether there's something to undo or redo. The same object while unchanged. */
+  readonly history: HistoryState;
+  /** Selected task ids, in the order they were selected. The same array while unchanged. */
+  readonly selection: readonly Id[];
+  /** The task the keyboard cursor is on (it may be hidden in a collapsed parent), or `null`. */
+  readonly activeId: Id | null;
 }
 
 export interface Interactions {
@@ -128,6 +137,17 @@ export interface GanttOptions {
    * changes nothing.
    */
   validateChange?: ((change: ProposedChange) => boolean | string) | undefined;
+  /**
+   * Keep a history of changes for `undo`/`redo` (the last 100). Default `true`. Turning it off forgets the
+   * history. Controlled: a change counts once the app passes its data back; other data clears the history.
+   */
+  undoRedo?: boolean | undefined;
+  /** Select several tasks (Ctrl/Cmd-click, Shift-click, Shift+arrows). Default `true`. */
+  multiSelect?: boolean | undefined;
+  /** Delete the selected tasks (with their subtasks) with Delete or Backspace. Default `true`. */
+  deleteKey?: boolean | undefined;
+  /** Called with the selected ids whenever the selection changes (also when deleted tasks drop out of it). */
+  onSelectionChange?: ((selection: readonly Id[]) => void) | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,
@@ -152,10 +172,11 @@ export interface GanttController {
    */
   hitTest: (point: TimelinePoint) => TimelineHit | null;
   /**
-   * Pointer events on the timeline body, in the same coordinates. `pointerDown` returns whether it grabbed a
-   * bar (so the renderer can capture the pointer). Moves under 3 px are a click. The drop is one transaction.
+   * Pointer events on the timeline body, in the same coordinates. `pointerDown` returns whether the press
+   * counts (so the renderer can capture the pointer until `pointerUp`). Moves under 3 px are a click, which
+   * selects the row (with the modifiers held at the press); a drop is one transaction.
    */
-  pointerDown: (point: TimelinePoint) => boolean;
+  pointerDown: (point: TimelinePoint, modifiers?: KeyModifiers) => boolean;
   pointerMove: (point: TimelinePoint) => void;
   pointerUp: (point: TimelinePoint) => void;
   /** Drops the current drag without changing anything (e.g. on Escape). Returns whether there was one. */
@@ -166,6 +187,31 @@ export interface GanttController {
    * `data` passed in. Returns the patch, or `null` if nothing changed.
    */
   transact: (fn: (tx: Transaction) => void) => Patch | null;
+  /**
+   * Reverts the last change (exactly, scheduling included), as a change of its own: reported through
+   * `onChange`, and in controlled mode shown once the data comes back. Returns whether there was one.
+   */
+  undo: () => boolean;
+  /** Applies the last undone change again. Returns whether there was one. */
+  redo: () => boolean;
+  /**
+   * A click on a row in the task list: selects it; Ctrl/Cmd toggles it, Shift selects the rows from the last
+   * clicked one. Unknown and hidden rows are ignored.
+   */
+  rowClick: (id: Id, modifiers?: KeyModifiers) => void;
+  /** Selects these tasks (unknown ids are skipped); the last one gets the keyboard cursor. */
+  select: (ids: readonly Id[]) => void;
+  clearSelection: () => void;
+  /**
+   * A key pressed while the chart has focus: moves the cursor and selection, expands and collapses, deletes,
+   * undoes. Returns whether the key was used, so the renderer can stop it (see ADR 0010 for the keys).
+   */
+  keyDown: (key: KeyInput) => boolean;
+  /**
+   * The `scrollTop` that brings a visible row into view (e.g. the active one after a key press), or `null`
+   * when it's in view already, hidden or unknown.
+   */
+  revealTop: (id: Id) => number | null;
   /** Expands a collapsed task or collapses an expanded one. Unknown ids and leaf tasks are ignored. */
   toggle: (id: Id) => void;
   setExpanded: (id: Id, expanded: boolean) => void;

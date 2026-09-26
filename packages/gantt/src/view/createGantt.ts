@@ -1,22 +1,37 @@
 import { createProject } from '../data/project';
 import { scheduleProject } from '../scheduling/schedule';
 import { getTreeIndex } from '../data/tree';
-import type { Id, ProjectState } from '../data/types';
+import type { Id, Operation, ProjectState } from '../data/types';
 import { createEmitter } from '../util/emitter';
 import { isEqual } from '../util/equal';
 import { QuartzioError } from '../util/errors';
 import { createDataBinding } from './binding';
+import { createHistory, type HistoryAction } from './history';
+import { keyCommand } from './keyboard';
+import {
+  clickRow,
+  NO_SELECTION,
+  pruneSelection,
+  selectIds,
+  selectionOf,
+  visibleRowOf,
+  type KeyModifiers,
+  type Selection,
+  type VisibleRows,
+} from './selection';
 import { resolveColumns, type ColumnInput, type ResolvedColumns } from './columns';
 import type { TimeAxis } from '../timeaxis/timeAxis';
 import { createDependencyView } from './dependencies';
 import {
+  CLICK_TOLERANCE,
   createInteraction,
   type Interaction,
   type InteractionView,
   type TaskInteraction,
+  type TimelinePoint,
 } from './interaction';
 import { createNonWorkingView } from './nonWorking';
-import { createRowsView } from './rows';
+import { createRowsView, UNMEASURED_HEIGHT } from './rows';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
 import type { GanttController, GanttOptions, Interactions, TodayLine, ViewState, Viewport } from './types';
 
@@ -68,6 +83,10 @@ const VIEW_KEYS = [
   'progressDrag',
   'dependencyCreate',
 ] as const;
+
+/** Modifiers straight from events (or plain JavaScript): anything that isn't an object means none. */
+const modifiersOf = (value: unknown): KeyModifiers =>
+  typeof value === 'object' && value !== null ? value : {};
 
 function toSwitch(value: unknown, fallback: boolean, name: string): boolean {
   if (value === undefined || value === null) return fallback;
@@ -147,11 +166,41 @@ function resolveSwitches(options: GanttOptions, previous?: ViewOptions): Omit<Vi
   };
 }
 
-function toValidator(value: unknown): GanttOptions['validateChange'] {
+function toCallback<K extends 'validateChange' | 'onSelectionChange'>(
+  value: unknown,
+  name: K,
+): GanttOptions[K] {
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'function')
-    throw new QuartzioError('Gantt options: "validateChange" must be a function.');
-  return value as GanttOptions['validateChange'];
+  if (typeof value !== 'function') throw new QuartzioError(`Gantt options: "${name}" must be a function.`);
+  return value as GanttOptions[K];
+}
+
+/** Behaviour switches that don't change how anything looks. */
+interface Behaviour {
+  undoRedo: boolean;
+  multiSelect: boolean;
+  deleteKey: boolean;
+  validateChange: GanttOptions['validateChange'];
+  onSelectionChange: GanttOptions['onSelectionChange'];
+}
+
+function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviour {
+  const has = (key: keyof GanttOptions) => previous === undefined || key in options;
+  return {
+    undoRedo: has('undoRedo') ? toSwitch(options.undoRedo, true, 'undoRedo') : (previous?.undoRedo ?? true),
+    multiSelect: has('multiSelect')
+      ? toSwitch(options.multiSelect, true, 'multiSelect')
+      : (previous?.multiSelect ?? true),
+    deleteKey: has('deleteKey')
+      ? toSwitch(options.deleteKey, true, 'deleteKey')
+      : (previous?.deleteKey ?? true),
+    validateChange: has('validateChange')
+      ? toCallback(options.validateChange, 'validateChange')
+      : previous?.validateChange,
+    onSelectionChange: has('onSelectionChange')
+      ? toCallback(options.onSelectionChange, 'onSelectionChange')
+      : previous?.onSelectionChange,
+  };
 }
 
 const sameView = (a: ViewOptions, b: ViewOptions) =>
@@ -169,18 +218,40 @@ const sameView = (a: ViewOptions, b: ViewOptions) =>
 
 export function createGantt(options: GanttOptions = {}): GanttController {
   let view = resolveViewOptions(options);
-  let validateChange = toValidator(options.validateChange);
+  let behaviour = resolveBehaviour(options);
   const controlled = 'data' in options;
   // Scheduling writes computed dates back into the data (ADR 0008).
   const project = createProject({}, { propagate: scheduleProject });
   const initialPatch = project.load((controlled ? options.data : options.defaultData) ?? {});
-  const binding = createDataBinding(project, controlled, options.data, options.onChange, initialPatch);
+  const history = createHistory();
+  // Changes are recorded after they're committed, so the history in the state is brought up to date then.
+  const syncHistory = (): void => {
+    if (!batching && !destroyed && state.history !== history.state())
+      setState({ ...state, history: history.state() });
+  };
+  const binding = createDataBinding(project, controlled, options.data, options.onChange, initialPatch, {
+    confirm(actions) {
+      if (!behaviour.undoRedo) return;
+      history.confirm(actions);
+      syncHistory();
+    },
+    clear() {
+      history.clear();
+      syncHistory();
+    },
+  });
   const timelineView = createTimelineView();
   const rowsView = createRowsView();
   const dependencyView = createDependencyView();
   const nonWorkingView = createNonWorkingView();
   const changes = createEmitter<ViewState>();
   let collapsed: ReadonlySet<Id> = new Set();
+  let selection: Selection = NO_SELECTION;
+  // The selection last reported through onSelectionChange.
+  let announced = selection.ids;
+  // A press in the timeline that is a click as long as the pointer stays within the tolerance.
+  let press: { origin: TimelinePoint; id: Id | null; modifiers: KeyModifiers } | null = null;
+  let visible: VisibleRows | undefined;
   let collapsedVersion = 0;
   let destroyed = false;
   // True while setOptions applies several changes, so they produce one state update instead of several.
@@ -214,7 +285,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       columns: view.columns,
       locale: view.timeline.locale,
       timeAxis,
+      selection,
     });
+    visible = { rowIds, rowIndex, tree: getTreeIndex(projectState.tasks) };
     const next: ViewState = {
       viewport,
       project: projectState,
@@ -232,6 +305,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       nonWorkingTime: nonWorkingView.spansFor(projectState, timeAxis, viewport, view.showNonWorkingTime),
       interaction: shownInteraction,
       interactions: view.interactions,
+      history: history.state(),
+      selection: selection.ids,
+      activeId: selection.active,
     };
     interactionView = {
       project: projectState,
@@ -249,7 +325,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         link: view.dependencyCreate,
       },
       // Read when asked, so a validator set later (or one closing over newer app state) is the one used.
-      validate: (change) => (validateChange ? validateChange(change) : true),
+      validate: (change) => (behaviour.validateChange ? behaviour.validateChange(change) : true),
     };
     // A drag on a stale basis (another axis, a changed or hidden task, options turned off) is dropped before
     // anything shows it.
@@ -270,7 +346,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     },
     commit(fn) {
       try {
-        binding.transact(fn);
+        changing(() => binding.transact(fn));
       } catch (error) {
         // Expected: the data rejecting the change (a dependency cycle can't come from a drop, but a date the
         // data doesn't accept could). Nothing changes and the bar goes back; a pointer handler must not throw.
@@ -290,8 +366,63 @@ export function createGantt(options: GanttOptions = {}): GanttController {
 
   const unsubscribeProject = project.subscribe(({ state: projectState }) => {
     pruneCollapsed(projectState);
+    selection = pruneSelection(selection, projectState.tasks.byId);
+    // Reported once the change is complete (see announce), not in the middle of committing it.
     if (!batching) setState(derive(state.viewport, projectState));
   });
+
+  /**
+   * Reports a changed selection. Called once an action is done (the data change reported and recorded), so an
+   * app callback that throws or changes things again can't leave a change half done.
+   */
+  const announce = (): void => {
+    if (selection.ids === announced || destroyed) return;
+    const same =
+      selection.ids.length === announced.length && selection.ids.every((id, i) => id === announced[i]);
+    announced = selection.ids;
+    if (!same) behaviour.onSelectionChange?.(announced);
+  };
+
+  /** Runs a data change, then reports what it did to the selection (deleted tasks drop out). */
+  const changing = <T>(fn: () => T): T => {
+    const result = fn();
+    announce();
+    return result;
+  };
+
+  const setSelection = (next: Selection): void => {
+    if (next === selection) return;
+    selection = next;
+    refresh();
+    announce();
+  };
+
+  const visibleRows = (): VisibleRows => visible as VisibleRows;
+
+  /** Undo or redo. If the data refuses it, the history no longer matches the data and is dropped. */
+  const replay = (operations: readonly Operation[], action: HistoryAction): boolean => {
+    try {
+      binding.apply(operations, () => action);
+      return true;
+    } catch (error) {
+      if (!(error instanceof QuartzioError)) throw error;
+      history.clear();
+      syncHistory();
+      return false;
+    }
+  };
+
+  const removeTasks = (ids: readonly Id[]): void => {
+    try {
+      changing(() =>
+        binding.transact((tx) => {
+          for (const id of ids) tx.tasks.remove(id);
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof QuartzioError)) throw error;
+    }
+  };
 
   const sameSet = (a: ReadonlySet<Id>, b: ReadonlySet<Id>) =>
     a.size === b.size && [...a].every((id) => b.has(id));
@@ -301,6 +432,12 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     collapsed = next;
     collapsedVersion++;
     refresh();
+    // A cursor hidden by collapsing moves to the parent that hides it, so it stays in view.
+    const shown = visibleRowOf(selection.active, visibleRows());
+    const shownId = shown === undefined ? undefined : visibleRows().rowIds[shown];
+    if (shownId !== undefined && shownId !== selection.active) {
+      setSelection(selectionOf(selection, selection.ids, shownId, shownId));
+    }
   };
 
   /** Forgets collapsed tasks that were removed or lost their children, so they start expanded if reused. */
@@ -314,7 +451,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     }
   };
 
-  return {
+  const controller: GanttController = {
     getState: () => state,
     subscribe: (listener) => {
       binding.start(); // a renderer took this controller into use: report the initial scheduling
@@ -325,7 +462,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       if (destroyed) return;
       // Validate everything first, so an invalid option changes nothing.
       const nextView = VIEW_KEYS.some((key) => key in next) ? resolveViewOptions(next, view) : view;
-      const nextValidate = 'validateChange' in next ? toValidator(next.validateChange) : validateChange;
+      const nextBehaviour = resolveBehaviour(next, behaviour);
       const before = project.getState();
 
       const previousView = view;
@@ -340,8 +477,21 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         batching = false;
       }
       if ('onChange' in next) binding.setOnChange(next.onChange);
-      validateChange = nextValidate;
-      if (!sameView(nextView, previousView) || project.getState() !== before) refresh();
+      behaviour = nextBehaviour;
+      if (!behaviour.undoRedo) history.clear();
+      if (!behaviour.multiSelect && selection.ids.length > 1) {
+        const last = selection.ids.at(-1) as Id;
+        selection = selectionOf(selection, [last], selection.active, last);
+      }
+      if (
+        !sameView(nextView, previousView) ||
+        project.getState() !== before ||
+        state.history !== history.state() ||
+        state.selection !== selection.ids
+      ) {
+        refresh();
+      }
+      announce();
     },
 
     setViewport(patch) {
@@ -363,19 +513,111 @@ export function createGantt(options: GanttOptions = {}): GanttController {
 
     transact(fn) {
       if (destroyed) return null;
-      return binding.transact(fn);
+      return changing(() => binding.transact(fn));
+    },
+
+    undo() {
+      const patch = destroyed || !behaviour.undoRedo || binding.awaiting() ? undefined : history.undoable();
+      if (!patch) return false;
+      return changing(() => replay(patch.inverse, { type: 'undo', patch }));
+    },
+
+    redo() {
+      const patch = destroyed || !behaviour.undoRedo || binding.awaiting() ? undefined : history.redoable();
+      if (!patch) return false;
+      return changing(() => replay(patch.operations, { type: 'redo', patch }));
     },
 
     hitTest: (point) => (destroyed ? null : drags.hitTest(point)),
-    pointerDown: (point) => !destroyed && drags.pointerDown(point),
+    pointerDown(point, modifiers) {
+      if (destroyed || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+      const index = Math.floor(point.y / state.rows.rowHeight);
+      press = { origin: point, id: visibleRows().rowIds[index] ?? null, modifiers: modifiersOf(modifiers) };
+      drags.pointerDown(point);
+      return true;
+    },
     pointerMove(point) {
-      if (!destroyed) drags.pointerMove(point);
+      if (destroyed) return;
+      if (press && Math.hypot(point.x - press.origin.x, point.y - press.origin.y) >= CLICK_TOLERANCE)
+        press = null;
+      drags.pointerMove(point);
     },
     pointerUp(point) {
-      if (!destroyed) drags.pointerUp(point);
+      if (destroyed) return;
+      const click = press;
+      press = null;
+      drags.pointerUp(point);
+      if (!click) return;
+      // Below the rows: a plain click clears the selection, as in a file list.
+      if (click.id === null) {
+        if (!click.modifiers.ctrl && !click.modifiers.meta && !click.modifiers.shift) {
+          setSelection(selectionOf(selection, [], selection.active, selection.anchor));
+        }
+        return;
+      }
+      setSelection(clickRow(selection, click.id, click.modifiers, visibleRows(), behaviour.multiSelect));
     },
     cancelInteraction() {
+      press = null;
       return !destroyed && drags.cancel();
+    },
+
+    rowClick(id, modifiers) {
+      if (destroyed) return;
+      setSelection(clickRow(selection, id, modifiersOf(modifiers), visibleRows(), behaviour.multiSelect));
+    },
+
+    select(ids) {
+      if (destroyed || !Array.isArray(ids)) return;
+      setSelection(selectIds(selection, ids, state.project.tasks.byId, behaviour.multiSelect));
+    },
+
+    clearSelection() {
+      if (destroyed) return;
+      setSelection(selectionOf(selection, [], selection.active, selection.anchor));
+    },
+
+    keyDown(input) {
+      // Checked, as it comes straight from DOM events (or plain JavaScript).
+      if (destroyed || typeof (input as unknown) !== 'object' || (input as unknown) === null) return false;
+      const height = state.viewport.height > 0 ? state.viewport.height : UNMEASURED_HEIGHT;
+      const command = keyCommand(input, {
+        ...visibleRows(),
+        selection,
+        collapsed,
+        pageRows: Math.floor(height / state.rows.rowHeight),
+        multiSelect: behaviour.multiSelect,
+        deleteKey: behaviour.deleteKey,
+        undoRedo: behaviour.undoRedo,
+      });
+      if (!command) return false;
+      switch (command.type) {
+        case 'select':
+          setSelection(command.selection);
+          return true;
+        case 'expand':
+          controller.setExpanded(command.id, command.expanded);
+          return true;
+        case 'delete':
+          removeTasks(command.ids);
+          setSelection(command.selection);
+          return true;
+        case 'undo':
+          return controller.undo();
+        case 'redo':
+          return controller.redo();
+      }
+    },
+
+    revealTop(id) {
+      const index = destroyed ? undefined : visibleRows().rowIndex.get(id);
+      const { height, scrollTop } = state.viewport;
+      if (index === undefined || height <= 0) return null;
+      const top = index * state.rows.rowHeight;
+      const bottom = top + state.rows.rowHeight;
+      if (top < scrollTop) return top;
+      if (bottom > scrollTop + height) return bottom - height;
+      return null;
     },
 
     toggle(id) {
@@ -412,4 +654,5 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       changes.clear();
     },
   };
+  return controller;
 }

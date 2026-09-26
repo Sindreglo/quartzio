@@ -518,4 +518,111 @@ describe('<Gantt />', () => {
       expect(body(container).querySelector('.qz-nonworking')).toBeNull();
     });
   });
+  describe('selection and keyboard', () => {
+    const tasks: ProjectInput = {
+      tasks: [
+        { id: 'p', name: 'Parent', children: [{ id: 'c', name: 'Child' }] },
+        { id: 'my task', name: 'Other' },
+      ],
+    };
+    const rows = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.qz-grid__row')];
+    const root = (container: HTMLElement) => container.firstElementChild as HTMLElement;
+
+    it('selects a clicked row, and adds with Ctrl', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(<Gantt defaultData={tasks} onSelectionChange={onSelectionChange} />);
+      fireEvent.click(rows(container)[0] as HTMLElement);
+      fireEvent.click(rows(container)[2] as HTMLElement, { ctrlKey: true });
+      expect(rows(container).map((row) => row.getAttribute('aria-selected'))).toEqual([
+        'true',
+        'false',
+        'true',
+      ]);
+      expect(onSelectionChange).toHaveBeenLastCalledWith(['p', 'my task']);
+      expect(root(container).getAttribute('aria-multiselectable')).toBe('true');
+    });
+
+    it('does not select a row when its toggle button is clicked', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+      expect(rows(container)[0]?.getAttribute('aria-selected')).toBe('false');
+      expect(screen.getByRole('button', { name: 'Expand' }).tabIndex).toBe(-1);
+    });
+
+    it('moves with the arrow keys, pointing at the active row, and stops the keys it uses', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const chart = root(container);
+      expect(chart.tabIndex).toBe(0);
+      expect(fireEvent.keyDown(chart, { key: 'ArrowDown' })).toBe(false); // default prevented
+      fireEvent.keyDown(chart, { key: 'End' });
+      const active = rows(container)[2] as HTMLElement;
+      expect(chart.getAttribute('aria-activedescendant')).toBe(active.id);
+      expect(active.id).not.toMatch(/\s/);
+      expect(active.getAttribute('aria-selected')).toBe('true');
+      expect(fireEvent.keyDown(chart, { key: 'Enter' })).toBe(true); // not used: left alone
+    });
+
+    it('deletes the selected task with Delete, and undoes with Ctrl+Z', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const chart = root(container);
+      fireEvent.click(rows(container)[2] as HTMLElement);
+      fireEvent.keyDown(chart, { key: 'Delete' });
+      expect(rowCount(container)).toBe(2);
+      fireEvent.keyDown(chart, { key: 'z', ctrlKey: true });
+      expect(rowCount(container)).toBe(3);
+    });
+
+    it('leaves keys in inputs inside the chart alone', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const input = document.createElement('input');
+      root(container).appendChild(input);
+      expect(fireEvent.keyDown(input, { key: 'ArrowDown' })).toBe(true);
+      expect(rows(container)[0]?.getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('has one tab stop: the scroll areas are not tab stops', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const stops = [...container.querySelectorAll<HTMLElement>('[tabindex]')].filter(
+        (el) => el.tabIndex >= 0,
+      );
+      expect(stops).toEqual([root(container)]);
+      for (const selector of [
+        '.qz-gantt__scroller',
+        '.qz-list__body',
+        '.qz-gantt__scrollbar-y',
+        '.qz-list__scrollbar',
+        '.qz-timeline__scrollbar',
+      ]) {
+        expect(container.querySelector<HTMLElement>(selector)?.tabIndex).toBe(-1);
+      }
+    });
+
+    it('moves focus from a press inside back to the chart, but not focus reached otherwise', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const scroller = container.querySelector('.qz-gantt__scroller') as HTMLElement;
+      fireEvent.pointerDown(scroller);
+      scroller.focus();
+      expect(document.activeElement).toBe(root(container));
+      fireEvent.pointerUp(scroller);
+      scroller.focus(); // e.g. by a script or assistive tech: left alone, so Tab can move on
+      expect(document.activeElement).toBe(scroller);
+    });
+
+    it('selects the row of a click in the timeline', () => {
+      const { container } = render(<Gantt defaultData={tasks} />);
+      const timeline = container.querySelector('.qz-timeline__body') as HTMLElement;
+      const pointer = { pointerId: 1, button: 0, isPrimary: true };
+      fireEvent.pointerDown(timeline, { ...pointer, clientX: 400, clientY: 36 + 18 });
+      fireEvent.pointerUp(timeline, { ...pointer, clientX: 400, clientY: 36 + 18 });
+      expect(rows(container)[1]?.getAttribute('aria-selected')).toBe('true');
+      expect(container.querySelectorAll('.qz-timeline__row--selected')).toHaveLength(1);
+    });
+
+    it('turns deleting off with deleteKey={false}', () => {
+      const { container } = render(<Gantt defaultData={tasks} deleteKey={false} />);
+      fireEvent.click(rows(container)[2] as HTMLElement);
+      fireEvent.keyDown(root(container), { key: 'Delete' });
+      expect(rowCount(container)).toBe(3);
+    });
+  });
 });

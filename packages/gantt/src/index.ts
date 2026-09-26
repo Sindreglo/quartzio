@@ -100,7 +100,10 @@ export type {
 } from './view/columns';
 export { DEFAULT_COLUMNS } from './view/columns';
 export { createGantt } from './view/createGantt';
+export type { HistoryState } from './view/history';
+export type { KeyInput } from './view/keyboard';
 export type { Row, RowsState } from './view/rows';
+export type { KeyModifiers } from './view/selection';
 export type {
   GanttController,
   GanttDataChange,

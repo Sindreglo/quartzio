@@ -23,6 +23,8 @@ const DEMOS =
         'task-list',
         'task-list:big',
         'timeaxis',
+        'selection',
+        'selection:big',
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
@@ -368,6 +370,122 @@ async function reveal(evaluate, key) {
   await sleep(400);
 }
 
+// Selection and keyboard with a real mouse and keys: a clicked row is selected in both halves and the chart has
+// focus; End and Home move the cursor and scroll it into view (below the sticky header); Shift+ArrowDown extends
+// the selection; Delete and Ctrl+Z delete and bring the rows back.
+async function selectionChecks(send, demo) {
+  if (demo !== 'selection') return [];
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
+  const KEYS = {
+    End: 35,
+    Home: 36,
+    ArrowDown: 40,
+    Delete: 46,
+    Tab: 9,
+    z: 90,
+  };
+  const press = async (key, modifiers = 0) => {
+    const params = {
+      key,
+      code: key.length === 1 ? `Key${key.toUpperCase()}` : key,
+      windowsVirtualKeyCode: KEYS[key],
+      modifiers,
+    };
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...params });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
+    await sleep(150);
+  };
+  const state = `(() => {
+    const chart = document.querySelector('.qz-gantt');
+    const scroller = chart.querySelector('.qz-gantt__scroller');
+    const header = chart.querySelector('.qz-list__header').getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const active = chart.querySelector('.qz-grid__row--active');
+    const rect = active?.getBoundingClientRect();
+    const selected = [...chart.querySelectorAll('.qz-grid__row[aria-selected="true"]')];
+    const timeline = selected.map((row) => chart.querySelector('.qz-timeline__row[data-key="' + row.dataset.key + '"]'));
+    const painted = (element) => element && getComputedStyle(element).backgroundColor !== 'rgba(0, 0, 0, 0)';
+    return {
+      focused: document.activeElement === chart,
+      descendant: chart.getAttribute('aria-activedescendant'),
+      activeId: active?.id ?? null,
+      activeKey: active?.dataset.key ?? null,
+      activeVisible: rect ? rect.top >= header.bottom - 1 && rect.bottom <= view.bottom + 1 : false,
+      selected: selected.map((row) => row.dataset.key),
+      bothHalves: timeline.every((row) => row?.classList.contains('qz-timeline__row--selected') && painted(row)),
+      listPainted: selected.every(painted),
+      rows: Number(chart.getAttribute('aria-rowcount')),
+      scrollTop: scroller.scrollTop,
+      scrollable: scroller.scrollHeight > scroller.clientHeight,
+    };
+  })()`;
+  await sleep(800); // let earlier scrolling settle
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollTo(0, 0)`);
+  await sleep(300);
+  const target = await evaluate(`(() => {
+    const row = document.querySelectorAll('.qz-grid__row')[1];
+    const list = document.querySelector('.qz-list__body').getBoundingClientRect();
+    const rect = row.getBoundingClientRect();
+    return { x: Math.min(rect.right, list.right) - 20, y: rect.top + rect.height / 2, key: row.dataset.key };
+  })()`);
+  const problems = [];
+  const click = (type) =>
+    send('Input.dispatchMouseEvent', {
+      type,
+      x: target.x,
+      y: target.y,
+      button: 'left',
+      buttons: type === 'mousePressed' ? 1 : 0,
+      clickCount: 1,
+    });
+  await click('mousePressed');
+  await click('mouseReleased');
+  await sleep(200);
+  const clicked = await evaluate(state);
+  if (clicked.selected.join() !== target.key)
+    problems.push(`selection: clicking row 2 selected ${JSON.stringify(clicked.selected)}`);
+  if (!clicked.focused) problems.push('selection: the chart does not have focus after a click');
+  if (!clicked.bothHalves || !clicked.listPainted)
+    problems.push('selection: the selected row is not highlighted in both halves');
+  if (clicked.descendant !== clicked.activeId)
+    problems.push('selection: aria-activedescendant does not point at the active row');
+
+  await press('End');
+  const end = await evaluate(state);
+  if (!end.activeVisible || (end.scrollable && end.scrollTop === 0))
+    problems.push(`selection: End did not scroll the last row into view (${JSON.stringify(end)})`);
+  if (end.descendant !== end.activeId || end.activeId === null)
+    problems.push('selection: aria-activedescendant is off after End');
+  await press('Home');
+  const home = await evaluate(state);
+  if (!home.activeVisible || home.scrollTop !== 0)
+    problems.push(`selection: Home did not scroll back to the top (${JSON.stringify(home)})`);
+  await press('ArrowDown', 8);
+  await press('ArrowDown', 8);
+  const extended = await evaluate(state);
+  if (extended.selected.length !== 3)
+    problems.push(`selection: Shift+ArrowDown twice selected ${String(extended.selected.length)} rows`);
+  await press('Delete');
+  const deleted = await evaluate(state);
+  await press('z', 2);
+  const undone = await evaluate(state);
+  if (!(deleted.rows < home.rows) || undone.rows !== home.rows) {
+    problems.push(
+      `selection: Delete and Ctrl+Z left ${String(deleted.rows)} and ${String(undone.rows)} rows (from ${String(home.rows)})`,
+    );
+  }
+  // One Tab leaves the chart: it's one tab stop (a scroll area inside that became one could trap the keyboard).
+  await evaluate(`document.querySelector('.qz-gantt').focus()`);
+  await press('Tab');
+  const trapped = await evaluate(`document.querySelector('.qz-gantt').contains(document.activeElement)`);
+  if (trapped) problems.push('selection: Tab does not leave the chart (a tab stop inside it)');
+  await evaluate(`document.querySelector('.qz-gantt').focus()`);
+  // Leave a visible selection for the screenshot.
+  await press('ArrowDown', 8);
+  return problems;
+}
+
 // Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
 // scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
 // the day), and the bar must sit on a day boundary.
@@ -599,6 +717,7 @@ try {
       problems.push(...(await wheelChecks(send)));
       problems.push(...(await gestureChecks(send)));
       problems.push(...(await dragChecks(send, id)));
+      problems.push(...(await selectionChecks(send, id)));
       const label = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}`;
       const file = join(OUT, `${label}.png`);
       const shot = await send('Page.captureScreenshot', { format: 'png' });

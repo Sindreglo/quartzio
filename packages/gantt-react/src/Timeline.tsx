@@ -122,6 +122,7 @@ const TimelineRow = memo(function TimelineRow({
   // A row to draw a bar in (an unscheduled task): touching it draws instead of scrolling.
   const drawable = interactions.create && !row.bar && !row.hasChildren;
   const className = ['qz-timeline__row'];
+  if (row.selected) className.push('qz-timeline__row--selected');
   if (dragging) className.push('qz-timeline__row--dragging');
   if (drawable) className.push('qz-timeline__row--drawable');
   return (
@@ -221,7 +222,14 @@ export function TimelineBody({
       // One pointer at a time: a second finger neither takes over nor ends the drag.
       onPointerDown={(event) => {
         if (event.button !== 0 || !event.isPrimary) return;
-        if (gantt.pointerDown(pointOf(event))) event.currentTarget.setPointerCapture(event.pointerId);
+        const modifiers = {
+          shift: event.shiftKey,
+          ctrl: event.ctrlKey,
+          meta: event.metaKey,
+          alt: event.altKey,
+        };
+        if (gantt.pointerDown(pointOf(event), modifiers))
+          event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
         if (!event.isPrimary) return;

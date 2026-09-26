@@ -1,5 +1,21 @@
-import type { ColumnsState, Id, Row } from '@quartzio/gantt';
-import { type CSSProperties, memo, type NamedExoticComponent, type ReactElement } from 'react';
+import type { ColumnsState, Id, KeyModifiers, Row } from '@quartzio/gantt';
+import {
+  type CSSProperties,
+  memo,
+  type MouseEvent,
+  type NamedExoticComponent,
+  type ReactElement,
+} from 'react';
+
+/** The id of a row's element, for `aria-activedescendant` (encoded: task ids may contain spaces). */
+export const rowElementId = (prefix: string, row: Row): string => `${prefix}-${encodeURIComponent(row.key)}`;
+
+const modifiersOf = (event: MouseEvent): KeyModifiers => ({
+  shift: event.shiftKey,
+  ctrl: event.ctrlKey,
+  meta: event.metaKey,
+  alt: event.altKey,
+});
 
 export const TaskListHeader: NamedExoticComponent<{ columns: ColumnsState; height: number }> = memo(
   function TaskListHeader({ columns, height }: { columns: ColumnsState; height: number }): ReactElement {
@@ -24,17 +40,26 @@ export const TaskListHeader: NamedExoticComponent<{ columns: ColumnsState; heigh
 const TaskRow = memo(function TaskRow({
   row,
   columns,
+  idPrefix,
   onToggle,
+  onClick,
 }: {
   row: Row;
   columns: ColumnsState;
+  idPrefix: string;
   onToggle: (id: Id) => void;
+  onClick: (id: Id, modifiers: KeyModifiers) => void;
 }): ReactElement {
   return (
     <div
-      className="qz-grid__row"
+      id={rowElementId(idPrefix, row)}
+      className={row.active ? 'qz-grid__row qz-grid__row--active' : 'qz-grid__row'}
       data-key={row.key}
       role="row"
+      aria-selected={row.selected}
+      onClick={(event) => {
+        onClick(row.id, modifiersOf(event));
+      }}
       // Rows are virtualized, so tell assistive tech where each one is (the header row is 1).
       aria-rowindex={row.index + 2}
       aria-level={row.depth + 1}
@@ -58,7 +83,10 @@ const TaskRow = memo(function TaskRow({
                 type="button"
                 className="qz-tree__toggle"
                 aria-label={row.expanded ? 'Collapse' : 'Expand'}
-                onClick={() => {
+                // Not a tab stop: the chart is one, and Left/Right expand and collapse.
+                tabIndex={-1}
+                onClick={(event) => {
+                  event.stopPropagation(); // expanding doesn't select the row
                   onToggle(row.id);
                 }}
               />
@@ -75,16 +103,27 @@ const TaskRow = memo(function TaskRow({
 export function TaskListBody({
   rows,
   columns,
+  idPrefix,
   onToggle,
+  onClick,
 }: {
   rows: readonly Row[];
   columns: ColumnsState;
+  idPrefix: string;
   onToggle: (id: Id) => void;
+  onClick: (id: Id, modifiers: KeyModifiers) => void;
 }): ReactElement {
   return (
     <div className="qz-grid__body" role="rowgroup">
       {rows.map((row) => (
-        <TaskRow key={row.key} row={row} columns={columns} onToggle={onToggle} />
+        <TaskRow
+          key={row.key}
+          row={row}
+          columns={columns}
+          idPrefix={idPrefix}
+          onToggle={onToggle}
+          onClick={onClick}
+        />
       ))}
     </div>
   );

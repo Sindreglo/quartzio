@@ -5,6 +5,7 @@ import {
   type Ref,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -12,8 +13,10 @@ import {
   useSyncExternalStore,
   type WheelEvent,
 } from 'react';
+import { useGridKeyboard } from './keyboard';
+import { engineOptions } from './options';
 import { follow, isEcho } from './scrollSync';
-import { TaskListBody, TaskListHeader } from './TaskList';
+import { rowElementId, TaskListBody, TaskListHeader } from './TaskList';
 import { TimelineBody, TimelineHeader } from './Timeline';
 
 /**
@@ -55,6 +58,8 @@ export function Gantt(props: GanttProps): ReactElement {
   const listScrollbarRef = useRef<HTMLDivElement>(null);
   // CSS decides the task list's width (its columns, up to a max); measured here and copied to the grid.
   const sizerRef = useRef<HTMLDivElement>(null);
+
+  const idPrefix = `qz${useId().replace(/[^\w-]/g, '')}`;
 
   useImperativeHandle(ref, () => gantt, [gantt]);
 
@@ -119,6 +124,9 @@ export function Gantt(props: GanttProps): ReactElement {
     follow(listBodyRef.current, 'scrollLeft', listScrollbarRef.current);
   }, [layout.horizontal, layout.vertical]);
 
+  const keyboard = useGridKeyboard(gantt, scrollerRef);
+  const activeRow = rows.items.find((row) => row.active);
+
   // The scrollbars can only scroll in their own direction; pass the other one on to the content.
   const forwardWheel = (event: WheelEvent) => {
     scrollerRef.current?.scrollBy(
@@ -151,11 +159,18 @@ export function Gantt(props: GanttProps): ReactElement {
       style={style}
       role="treegrid"
       aria-rowcount={rows.count + 1}
+      aria-multiselectable={props.multiSelect !== false}
+      // One tab stop; the rows are reached with the keyboard, the active one pointed at (it may be virtualized
+      // away, and then there's nothing to point at until it's scrolled back).
+      aria-activedescendant={activeRow ? rowElementId(idPrefix, activeRow) : undefined}
+      {...keyboard}
     >
       <div ref={sizerRef} className="qz-gantt__sizer" />
       <div
         ref={scrollerRef}
         className="qz-gantt__scroller"
+        // Browsers make scroll areas tab stops (this one and those below); the chart already is one.
+        tabIndex={-1}
         onScroll={(event) => {
           const scroller = event.currentTarget;
           gantt.setViewport({ scrollLeft: scroller.scrollLeft, scrollTop: scroller.scrollTop });
@@ -176,6 +191,7 @@ export function Gantt(props: GanttProps): ReactElement {
           <div
             ref={listBodyRef}
             className="qz-list__body"
+            tabIndex={-1}
             onScroll={(event) => {
               const list = event.currentTarget;
               follow(list, 'scrollLeft', listHeaderRef.current);
@@ -183,7 +199,13 @@ export function Gantt(props: GanttProps): ReactElement {
             }}
           >
             <div className="qz-list__canvas" style={{ height: rows.totalHeight }}>
-              <TaskListBody rows={rows.items} columns={state.columns} onToggle={gantt.toggle} />
+              <TaskListBody
+                rows={rows.items}
+                columns={state.columns}
+                idPrefix={idPrefix}
+                onToggle={gantt.toggle}
+                onClick={gantt.rowClick}
+              />
             </div>
             {rows.count === 0 && <div className="qz-gantt__empty">No tasks</div>}
           </div>
@@ -206,6 +228,7 @@ export function Gantt(props: GanttProps): ReactElement {
       <div
         ref={verticalScrollbarRef}
         className="qz-gantt__scrollbar-y"
+        tabIndex={-1}
         aria-hidden="true"
         onScroll={(event) => {
           if (!isEcho(event.currentTarget, 'scrollTop'))
@@ -219,6 +242,7 @@ export function Gantt(props: GanttProps): ReactElement {
         <div
           ref={listScrollbarRef}
           className="qz-list__scrollbar"
+          tabIndex={-1}
           onScroll={(event) => {
             if (!isEcho(event.currentTarget, 'scrollLeft'))
               follow(event.currentTarget, 'scrollLeft', listBodyRef.current);
@@ -230,6 +254,7 @@ export function Gantt(props: GanttProps): ReactElement {
         <div
           ref={timelineScrollbarRef}
           className="qz-timeline__scrollbar"
+          tabIndex={-1}
           onScroll={(event) => {
             if (!isEcho(event.currentTarget, 'scrollLeft'))
               follow(event.currentTarget, 'scrollLeft', scrollerRef.current);
@@ -252,38 +277,4 @@ function scrollbarSize(root: HTMLElement): number {
   const size = probe.offsetHeight - probe.clientHeight;
   probe.remove();
   return size;
-}
-
-// Every engine option except `data`, passed on every render, so a prop that's removed goes back to its default
-// (a missing key would keep the last value). Checked against GanttOptions below.
-const OPTION_KEYS = [
-  'defaultData',
-  'onChange',
-  'preset',
-  'startDate',
-  'endDate',
-  'locale',
-  'columns',
-  'rowHeight',
-  'headerRowHeight',
-  'showToday',
-  'showNonWorkingTime',
-  'taskDrag',
-  'taskResize',
-  'taskDragCreate',
-  'progressDrag',
-  'dependencyCreate',
-  'validateChange',
-] as const satisfies readonly (keyof GanttOptions)[];
-// Fails to compile when GanttOptions gets an option that isn't listed.
-const _allListed: Exclude<keyof GanttOptions, (typeof OPTION_KEYS)[number] | 'data'> extends never
-  ? true
-  : never = true;
-
-/** The engine options in the props. `data` only when present: its presence makes the chart controlled. */
-function engineOptions(props: GanttProps): GanttOptions {
-  const options: Record<string, unknown> = {};
-  for (const key of OPTION_KEYS) options[key] = props[key];
-  if ('data' in props) options.data = props.data;
-  return options;
 }
