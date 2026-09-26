@@ -102,6 +102,24 @@ export { DEFAULT_COLUMNS } from './view/columns';
 export { createGantt } from './view/createGantt';
 export type { CellEdit, EditKind } from './view/editing';
 export type { HistoryState } from './view/history';
+export type {
+  MenuContext,
+  MenuCustomizer,
+  MenuItem,
+  MenuState,
+  MenuTarget,
+  TaskMenuItemId,
+} from './view/menu';
+export type {
+  TaskEditorAction,
+  TaskEditorConstraint,
+  TaskEditorDependency,
+  TaskEditorField,
+  TaskEditorFieldState,
+  TaskEditorSide,
+  TaskEditorState,
+  TaskEditorTab,
+} from './view/taskEditor';
 export type { TaskTooltip } from './view/tooltip';
 export type { KeyInput } from './view/keyboard';
 export type { Row, RowsState } from './view/rows';
@@ -112,6 +130,7 @@ export type {
   GanttOptions,
   HeaderState,
   Interactions,
+  ScrollRequest,
   TodayLine,
   Viewport,
   ViewState,

@@ -780,4 +780,184 @@ describe('<Gantt />', () => {
       expect(container.querySelector('.qz-cell-editor')).toBeNull();
     });
   });
+  describe('menus and the task editor', () => {
+    const project: ProjectInput = {
+      settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+      tasks: [
+        { id: 'a', name: 'Alpha', duration: 2 },
+        { id: 'b', name: 'Beta', duration: 1 },
+      ],
+    };
+    const renderChart = (props = {}) =>
+      render(
+        <Gantt
+          defaultData={project}
+          preset="weekAndDay"
+          startDate="2026-10-05"
+          endDate="2026-11-02"
+          locale="en-US"
+          {...props}
+        />,
+      );
+    const rows = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.qz-grid__row')];
+    const names = (container: HTMLElement) =>
+      rows(container).map((row) => row.querySelector('.qz-grid__text')?.textContent);
+
+    it('opens the task menu on right-click, and runs what is picked', () => {
+      const { container } = renderChart();
+      const row = rows(container)[1] as HTMLElement;
+      expect(fireEvent.contextMenu(row)).toBe(false); // the browser's menu is replaced
+      const menu = screen.getByRole('menu');
+      expect(document.activeElement).toBe(menu);
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toContain('Delete');
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(names(container)).toEqual(['Alpha']);
+    });
+
+    it('keeps focus in the menu when it opens during the press (as Chrome does on macOS)', () => {
+      const { container } = renderChart();
+      const row = rows(container)[0] as HTMLElement;
+      fireEvent.pointerDown(row, { button: 2 });
+      fireEvent.contextMenu(row);
+      expect(document.activeElement).toBe(screen.getByRole('menu'));
+    });
+
+    it('opens the Add submenu on hover, and adds a task with its name open for editing', () => {
+      const { container } = renderChart();
+      fireEvent.contextMenu(rows(container)[0] as HTMLElement);
+      fireEvent.pointerEnter(screen.getByRole('menuitem', { name: /Add/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Task below' }));
+      expect(rows(container)[1]?.querySelector('.qz-cell-editor')).not.toBeNull(); // its name is being edited
+      expect((document.activeElement as HTMLInputElement).value).toBe('New task');
+    });
+
+    it('works the menu with the keyboard, and gives focus back when it closes', async () => {
+      const { container } = renderChart();
+      const chart = container.firstElementChild as HTMLElement;
+      fireEvent.keyDown(chart, { key: 'ArrowDown' });
+      fireEvent.keyDown(chart, { key: 'ContextMenu' });
+      const menu = screen.getByRole('menu');
+      expect(menu.getAttribute('aria-activedescendant')).toBeTruthy();
+      fireEvent.keyDown(menu, { key: 'Escape' });
+      expect(screen.queryByRole('menu')).toBeNull();
+      await act(() => Promise.resolve());
+      expect(document.activeElement).toBe(chart);
+    });
+
+    it('closes the menu on a press outside it', () => {
+      const { container } = renderChart();
+      fireEvent.contextMenu(rows(container)[0] as HTMLElement);
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('zooms from the time axis menu', () => {
+      const { container } = renderChart();
+      fireEvent.contextMenu(container.querySelector('.qz-timeline__header') as HTMLElement);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Zoom out' }));
+      expect(container.querySelector('.qz-header__label')?.textContent).toMatch(/Oct|2026/);
+      fireEvent.contextMenu(container.querySelector('.qz-timeline__header') as HTMLElement);
+      expect(screen.getByRole('menuitemradio', { name: /Weeks$/ }).getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('edits a task in the dialog on a double-click on its bar', () => {
+      const { container } = renderChart();
+      const bar = container.querySelector('.qz-timeline__row .qz-bar') as HTMLElement;
+      const body = container.querySelector('.qz-timeline__body') as HTMLElement;
+      fireEvent.doubleClick(body, { clientX: Number.parseFloat(bar.style.left) + 5, clientY: 18 });
+      const dialog = container.querySelector('dialog') as HTMLDialogElement;
+      expect(dialog.open).toBe(true);
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } });
+      fireEvent.change(screen.getByLabelText('Duration'), { target: { value: '3d' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(container.querySelector('dialog')).toBeNull();
+      expect(names(container)[0]).toBe('Renamed');
+    });
+
+    it('shows why the dialog cannot save, and closes on Cancel or Escape without saving', () => {
+      const ref = createRef<GanttController>();
+      const { container } = renderChart({ ref });
+      act(() => {
+        ref.current?.openTaskEditor('a');
+      });
+      fireEvent.change(screen.getByLabelText('Duration'), { target: { value: 'soon' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(screen.getByLabelText('Duration').getAttribute('aria-invalid')).toBe('true');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(container.querySelector('dialog')).toBeNull();
+      act(() => {
+        ref.current?.openTaskEditor('a');
+      });
+      fireEvent(
+        container.querySelector('dialog') as HTMLDialogElement,
+        new Event('cancel', { cancelable: true }),
+      );
+      expect(container.querySelector('dialog')).toBeNull();
+    });
+
+    it('adds a predecessor on its tab', () => {
+      const ref = createRef<GanttController>();
+      renderChart({ ref });
+      act(() => {
+        ref.current?.openTaskEditor('b');
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Predecessors' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add predecessor' }));
+      fireEvent.change(screen.getByLabelText('Task'), { target: { value: '0' } }); // Alpha
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect([...(ref.current?.getState().project.dependencies.byId.values() ?? [])]).toEqual([
+        expect.objectContaining({ from: 'a', to: 'b', type: 'FS' }),
+      ]);
+    });
+
+    it('leaves right-clicks in a cell field to the browser', () => {
+      const { container } = renderChart();
+      fireEvent.doubleClick(rows(container)[0]?.querySelector('.qz-grid__cell') as HTMLElement);
+      const input = container.querySelector('.qz-cell-editor') as HTMLElement;
+      expect(fireEvent.contextMenu(input)).toBe(true); // not prevented
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('tells the engine when the browser closes the dialog', async () => {
+      const ref = createRef<GanttController>();
+      renderChart({ ref });
+      act(() => {
+        ref.current?.openTaskEditor('a');
+      });
+      const dialog = document.querySelector('dialog') as HTMLDialogElement;
+      dialog.removeAttribute('open'); // as close() does
+      fireEvent(dialog, new Event('close'));
+      await act(() => Promise.resolve());
+      expect(ref.current?.getState().taskEditor).toBeNull();
+    });
+
+    it('keeps the dialog open in StrictMode', async () => {
+      const ref = createRef<GanttController>();
+      render(
+        <StrictMode>
+          <Gantt ref={ref} defaultData={project} />
+        </StrictMode>,
+      );
+      act(() => {
+        ref.current?.openTaskEditor('a');
+      });
+      await act(() => new Promise((done) => setTimeout(done, 10)));
+      expect(ref.current?.getState().taskEditor).not.toBeNull();
+    });
+
+    it('replaces the dialog content with renderTaskEditor', () => {
+      const ref = createRef<GanttController>();
+      renderChart({
+        ref,
+        renderTaskEditor: (editor: { task: { name: string } }) => (
+          <p className="custom">{editor.task.name}</p>
+        ),
+      });
+      act(() => {
+        ref.current?.openTaskEditor('a');
+      });
+      expect(document.querySelector('dialog .custom')?.textContent).toBe('Alpha');
+    });
+  });
 });

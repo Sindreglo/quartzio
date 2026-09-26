@@ -34,9 +34,38 @@ import { createNonWorkingView } from './nonWorking';
 import { createRowsView, UNMEASURED_HEIGHT } from './rows';
 import { tooltipFor, type TaskTooltip } from './tooltip';
 import { createCellEditor, type EditorView } from './cellEditor';
+import { barUnder } from './interaction';
+import {
+  customized,
+  findItem,
+  menuHover,
+  menuKey,
+  taskMenuItems,
+  targetsOf,
+  timeAxisMenuItems,
+  zoomStep,
+  type MenuContext,
+  type MenuItem,
+  type MenuState,
+  type MenuTarget,
+  type TaskMenuItemId,
+} from './menu';
+import { addTask, indent, outdent, type AddWhere } from './taskActions';
+import { createTaskEditor } from './taskEditor';
+import { VIEW_PRESETS } from '../timeaxis/presets';
+import type { Transaction } from '../data/transaction';
+
 import { dateKind } from './editing';
 import { createTimelineView, resolveTimeline, sameTimeline, type TimelineOptions } from './timeline';
-import type { GanttController, GanttOptions, Interactions, TodayLine, ViewState, Viewport } from './types';
+import type {
+  GanttController,
+  GanttOptions,
+  Interactions,
+  ScrollRequest,
+  TodayLine,
+  ViewState,
+  Viewport,
+} from './types';
 
 export type {
   GanttController,
@@ -51,6 +80,17 @@ export type {
 const INITIAL_VIEWPORT: Viewport = { width: 0, height: 0, scrollLeft: 0, scrollTop: 0 };
 const DEFAULT_ROW_HEIGHT = 36;
 const DEFAULT_HEADER_ROW_HEIGHT = 28;
+/** Where a menu opened with the keyboard goes, from the left edge of the chart. */
+const KEYBOARD_MENU_X = 24;
+
+/** The `scrollTop` that shows row `index`, or `null` when it shows (or nothing is measured). */
+function revealTopOf(index: number, viewport: Viewport, rowHeight: number): number | null {
+  if (viewport.height <= 0) return null;
+  const top = index * rowHeight;
+  if (top < viewport.scrollTop) return top;
+  if (top + rowHeight > viewport.scrollTop + viewport.height) return top + rowHeight - viewport.height;
+  return null;
+}
 
 /** Options that shape the view (as opposed to data and callbacks), validated as a whole. */
 interface ViewOptions {
@@ -169,10 +209,15 @@ function resolveSwitches(options: GanttOptions, previous?: ViewOptions): Omit<Vi
   };
 }
 
-function toCallback<K extends 'validateChange' | 'onSelectionChange'>(
-  value: unknown,
-  name: K,
-): GanttOptions[K] {
+type CallbackOption =
+  | 'validateChange'
+  | 'onSelectionChange'
+  | 'taskMenuItems'
+  | 'timeAxisMenuItems'
+  | 'createTaskId'
+  | 'onPresetChange';
+
+function toCallback<K extends CallbackOption>(value: unknown, name: K): GanttOptions[K] {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'function') throw new QuartzioError(`Gantt options: "${name}" must be a function.`);
   return value as GanttOptions[K];
@@ -185,8 +230,15 @@ interface Behaviour {
   undoRedo: boolean;
   multiSelect: boolean;
   deleteKey: boolean;
+  taskMenu: boolean;
+  timeAxisMenu: boolean;
+  taskEdit: boolean;
   validateChange: GanttOptions['validateChange'];
   onSelectionChange: GanttOptions['onSelectionChange'];
+  taskMenuItems: GanttOptions['taskMenuItems'];
+  timeAxisMenuItems: GanttOptions['timeAxisMenuItems'];
+  createTaskId: GanttOptions['createTaskId'];
+  onPresetChange: GanttOptions['onPresetChange'];
 }
 
 function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviour {
@@ -209,6 +261,23 @@ function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviou
     onSelectionChange: has('onSelectionChange')
       ? toCallback(options.onSelectionChange, 'onSelectionChange')
       : previous?.onSelectionChange,
+    taskMenu: has('taskMenu') ? toSwitch(options.taskMenu, true, 'taskMenu') : (previous?.taskMenu ?? true),
+    timeAxisMenu: has('timeAxisMenu')
+      ? toSwitch(options.timeAxisMenu, true, 'timeAxisMenu')
+      : (previous?.timeAxisMenu ?? true),
+    taskEdit: has('taskEdit') ? toSwitch(options.taskEdit, true, 'taskEdit') : (previous?.taskEdit ?? true),
+    taskMenuItems: has('taskMenuItems')
+      ? toCallback(options.taskMenuItems, 'taskMenuItems')
+      : previous?.taskMenuItems,
+    timeAxisMenuItems: has('timeAxisMenuItems')
+      ? toCallback(options.timeAxisMenuItems, 'timeAxisMenuItems')
+      : previous?.timeAxisMenuItems,
+    createTaskId: has('createTaskId')
+      ? toCallback(options.createTaskId, 'createTaskId')
+      : previous?.createTaskId,
+    onPresetChange: has('onPresetChange')
+      ? toCallback(options.onPresetChange, 'onPresetChange')
+      : previous?.onPresetChange,
   };
 }
 
@@ -256,6 +325,22 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   const changes = createEmitter<ViewState>();
   let collapsed: ReadonlySet<Id> = new Set();
   let selection: Selection = NO_SELECTION;
+  let menu: MenuState | null = null;
+  // Where the renderer should scroll to (after zooming, or to show a new task); new object each time.
+  let scrollTo: ScrollRequest | null = null;
+  // A zoom overrides the preset option until the option changes (compared by value).
+  let zoomed = false;
+  let presetOption: unknown = options.preset;
+  // A task just added from the menu: selected, shown and opened for editing once it's in the data.
+  let added: Id | null = null;
+  let reveal: Id | null = null;
+  // Its name is opened once the rows show it (after the state is derived).
+  let editAdded: Id | null = null;
+  const openAdded = (): void => {
+    const id = editAdded;
+    editAdded = null;
+    if (id !== null) editor.start(id, 'name');
+  };
   // The selection last reported through onSelectionChange.
   let announced = selection.ids;
   // A press in the timeline that is a click as long as the pointer stays within the tolerance.
@@ -302,6 +387,13 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       selection,
     });
     visible = { rowIds, rowIndex, tree: getTreeIndex(projectState.tasks) };
+    if (reveal !== null) {
+      const index = rowIndex.get(reveal);
+      const top = index === undefined ? null : revealTopOf(index, viewport, rows.rowHeight);
+      if (top !== null) scrollTo = { top };
+      reveal = null;
+    }
+    if (menu?.kind === 'task' && !projectState.tasks.byId.has(menu.taskId as Id)) menu = null;
     editorView = {
       ...visible,
       project: projectState,
@@ -342,6 +434,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       activeId: selection.active,
       tooltip,
       editing: editor.current(editorView),
+      menu,
+      taskEditor: taskEditor.current(editorView),
+      scrollTo,
     };
     interactionView = {
       project: projectState,
@@ -389,6 +484,18 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     },
   });
 
+  const taskEditor = createTaskEditor({
+    view: () => editorView as EditorView,
+    enabled: () => behaviour.taskEdit,
+    plan: (fn) => project.plan(fn),
+    commit(fn) {
+      changing(() => binding.transact(fn));
+    },
+    show: () => {
+      if (!batching && !destroyed) refresh();
+    },
+  });
+
   let state = derive(INITIAL_VIEWPORT, project.getState());
 
   const drags = createInteraction({
@@ -420,8 +527,18 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   const unsubscribeProject = project.subscribe(({ state: projectState }) => {
     pruneCollapsed(projectState);
     selection = pruneSelection(selection, projectState.tasks.byId);
+    const arrived = added !== null && projectState.tasks.byId.has(added) ? added : null;
+    added = null; // in this change, or not coming (the app didn't take it)
+    if (arrived !== null) {
+      selection = selectionOf(selection, [arrived], arrived, arrived);
+      reveal = arrived;
+    }
     // Reported once the change is complete (see announce), not in the middle of committing it.
-    if (!batching) setState(derive(state.viewport, projectState));
+    if (arrived !== null) editAdded = arrived;
+    if (!batching) {
+      setState(derive(state.viewport, projectState));
+      openAdded();
+    }
   });
 
   /**
@@ -459,6 +576,95 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   const closeEdit = (): void => {
     if (!state.editing) return;
     if (!editor.commit()) editor.cancel();
+  };
+
+  const parentOf = (id: Id): Id | null => state.project.tasks.byId.get(id)?.parentId ?? null;
+
+  const menuContext = (target: MenuTarget): MenuContext => ({
+    target,
+    task: target.kind === 'task' ? (state.project.tasks.byId.get(target.id) ?? null) : null,
+    selection: selection.ids,
+    preset: view.timeline.preset,
+  });
+
+  /** A change from the task menu; the data refusing it changes nothing. */
+  const changeFromMenu = (fn: (tx: Transaction) => void): void => {
+    try {
+      changing(() => binding.transact(fn));
+    } catch (error) {
+      if (!(error instanceof QuartzioError)) throw error;
+      added = null;
+    }
+  };
+
+  const expand = (ids: readonly Id[]): void => {
+    if (ids.some((id) => collapsed.has(id)))
+      setCollapsed(new Set([...collapsed].filter((id) => !ids.includes(id))));
+  };
+
+  const runTaskAction = (id: TaskMenuItemId, taskId: Id): void => {
+    const task = state.project.tasks.byId.get(taskId);
+    if (!task) return;
+    const targets = targetsOf(taskId, selection.ids, getTreeIndex(state.project.tasks));
+    const add = (where: AddWhere) => {
+      // A subtask of a collapsed parent would be hidden.
+      if (where === 'subtask') expand([taskId]);
+      changeFromMenu((tx) => {
+        added = addTask(tx, task, where, behaviour.createTaskId?.());
+      });
+    };
+    switch (id) {
+      case 'edit':
+        controller.openTaskEditor(taskId);
+        return;
+      case 'addTaskAbove': {
+        add('above');
+        return;
+      }
+      case 'addTaskBelow': {
+        add('below');
+        return;
+      }
+      case 'addSubtask': {
+        add('subtask');
+        return;
+      }
+      case 'addMilestone': {
+        add('milestone');
+        return;
+      }
+      case 'addSuccessor': {
+        add('successor');
+        return;
+      }
+      case 'addPredecessor': {
+        add('predecessor');
+        return;
+      }
+      case 'indent': {
+        let parents: Id[] = [];
+        const { tasks, dependencies } = state.project;
+        changeFromMenu((tx) => {
+          parents = indent(tx, targets, getTreeIndex(tasks), dependencies.byId.values());
+        });
+        expand(parents); // so the indented tasks stay in view
+        return;
+      }
+      case 'outdent': {
+        changeFromMenu((tx) => {
+          outdent(tx, targets);
+        });
+        return;
+      }
+      case 'convertToMilestone': {
+        changeFromMenu((tx) => {
+          tx.tasks.update(taskId, { duration: 0 });
+        });
+        return;
+      }
+      case 'delete':
+        removeTasks(targets);
+    }
   };
 
   /** Undo or redo. If the data refuses it, the history no longer matches the data and is dropped. */
@@ -523,7 +729,11 @@ export function createGantt(options: GanttOptions = {}): GanttController {
     setOptions(next) {
       if (destroyed) return;
       // Validate everything first, so an invalid option changes nothing.
-      const nextView = VIEW_KEYS.some((key) => key in next) ? resolveViewOptions(next, view) : view;
+      // The same preset as before on a zoomed chart (e.g. the same prop on the next render) keeps the zoom.
+      const keepZoom = zoomed && 'preset' in next && isEqual(next.preset, presetOption);
+      const { preset: _preset, ...withoutPreset } = next;
+      const effective = keepZoom ? withoutPreset : next;
+      const nextView = VIEW_KEYS.some((key) => key in effective) ? resolveViewOptions(effective, view) : view;
       const nextBehaviour = resolveBehaviour(next, behaviour);
       const before = project.getState();
 
@@ -531,7 +741,11 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       view = nextView;
       batching = true;
       try {
-        if (controlled && 'data' in next) binding.setData(next.data);
+        if (controlled && 'data' in next) {
+          binding.setData(next.data);
+          // A task added from the menu comes with the next data, or not at all (the app didn't take it).
+          added = null;
+        }
       } catch (error) {
         view = previousView;
         throw error;
@@ -540,6 +754,11 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       }
       if ('onChange' in next) binding.setOnChange(next.onChange);
       behaviour = nextBehaviour;
+      if ('preset' in next && !keepZoom) {
+        zoomed = false;
+        presetOption = next.preset;
+      }
+      if (menu && !(menu.kind === 'task' ? behaviour.taskMenu : behaviour.timeAxisMenu)) menu = null;
       if (!behaviour.undoRedo) history.clear();
       // Recomputed from scratch: the texts depend on the options (locale, columns).
       if (!sameView(nextView, previousView)) tooltip = null;
@@ -553,10 +772,13 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         state.history !== history.state() ||
         state.selection !== selection.ids ||
         (state.tooltip !== null && !behaviour.taskTooltip) ||
-        (state.editing !== null && !behaviour.cellEdit)
+        (state.editing !== null && !behaviour.cellEdit) ||
+        state.menu !== menu ||
+        (state.taskEditor !== null && !behaviour.taskEdit)
       ) {
         refresh();
       }
+      openAdded();
       announce();
     },
 
@@ -573,6 +795,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         return;
       }
       // What's under a still pointer changes while scrolling; the tooltip goes until it moves again.
+      if (viewport.scrollLeft !== current.scrollLeft || viewport.scrollTop !== current.scrollTop) menu = null;
       if (viewport.scrollLeft !== current.scrollLeft || viewport.scrollTop !== current.scrollTop)
         hoverPoint = null;
       setState(derive(viewport, state.project));
@@ -602,6 +825,10 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       if (destroyed || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
       const index = Math.floor(point.y / state.rows.rowHeight);
       closeEdit();
+      if (menu) {
+        menu = null;
+        refresh();
+      }
       press = { origin: point, id: visibleRows().rowIds[index] ?? null, modifiers: modifiersOf(modifiers) };
       if (hoverPoint) {
         hoverPoint = null;
@@ -682,6 +909,8 @@ export function createGantt(options: GanttOptions = {}): GanttController {
           return controller.undo();
         case 'redo':
           return controller.redo();
+        case 'menu':
+          return controller.openMenu({ kind: 'task', id: command.id });
         case 'edit': {
           const started = editor.start(command.id);
           announce(); // the cursor may have moved
@@ -723,15 +952,149 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       if (!destroyed) editor.cancel();
     },
 
+    openMenu(target, point) {
+      if (destroyed || typeof target !== 'object' || (target as unknown) === null) return false;
+      // Opened during a press (Ctrl-click on macOS): that press is not a click or a drag.
+      press = null;
+      drags.cancel();
+      const at = point && Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
+      let items: readonly MenuItem[];
+      let y: number;
+      if (target.kind === 'task') {
+        const task = state.project.tasks.byId.get(target.id);
+        if (!behaviour.taskMenu || !task) return false;
+        // As in a file list: a row that isn't selected is selected alone; a selection that has it is kept.
+        const id = task.id;
+        selection = selection.set.has(id)
+          ? selectionOf(selection, selection.ids, id, selection.anchor)
+          : selectionOf(selection, [id], id, id);
+        const tree = getTreeIndex(state.project.tasks);
+        const targets = targetsOf(id, selection.ids, tree);
+        const builtIn = taskMenuItems(task, targets, tree, parentOf, { edit: behaviour.taskEdit });
+        items = customized(builtIn, behaviour.taskMenuItems, menuContext(target));
+        const row = visibleRows().rowIndex.get(id) ?? 0;
+        const { header, rows, viewport } = state;
+        // Below the row, kept within the visible rows (the row may be scrolled out of view).
+        const below = header.height + (row + 1) * rows.rowHeight - viewport.scrollTop;
+        y = Math.max(header.height, Math.min(below, header.height + Math.max(viewport.height, 0)));
+      } else if ((target.kind as unknown) === 'timeAxis') {
+        if (!behaviour.timeAxisMenu) return false;
+        const builtIn = timeAxisMenuItems(view.timeline.preset);
+        items = customized(builtIn, behaviour.timeAxisMenuItems, menuContext(target));
+        y = state.header.height;
+      } else {
+        return false;
+      }
+      if (items.length === 0) return false;
+      menu = {
+        kind: target.kind,
+        taskId: target.kind === 'task' ? target.id : null,
+        x: at?.x ?? KEYBOARD_MENU_X,
+        y: at?.y ?? y,
+        items,
+        // Opened with the keyboard: the first item is ready to be picked.
+        active: at ? null : (items.find((item) => item.disabled !== true)?.id ?? null),
+        submenu: null,
+      };
+      refresh();
+      announce();
+      return true;
+    },
+
+    menuKeyDown(key) {
+      if (destroyed || !menu || typeof key !== 'object' || (key as unknown) === null) return false;
+      const result = menuKey(menu, key);
+      if (!result) return false;
+      if (result.pick !== undefined) {
+        controller.menuAction(result.pick);
+        return true;
+      }
+      menu = result.menu;
+      refresh();
+      return true;
+    },
+
+    menuHover(id) {
+      if (destroyed || !menu) return;
+      const next = menuHover(menu, id);
+      if (next === menu) return;
+      menu = next;
+      refresh();
+    },
+
+    menuAction(id) {
+      const open = menu;
+      const item = open && !destroyed ? findItem(open.items, id) : undefined;
+      if (!open || !item || item.disabled === true || item.items) return;
+      menu = null;
+      refresh();
+      const target: MenuTarget =
+        open.kind === 'task' ? { kind: 'task', id: open.taskId as Id } : { kind: 'timeAxis' };
+      if (item.action) {
+        item.action(menuContext(target));
+        return;
+      }
+      if (target.kind === 'timeAxis') {
+        if (id === 'zoomIn' || id === 'zoomOut') controller.zoom(id === 'zoomIn' ? 'in' : 'out');
+        else if (id.startsWith('preset:')) controller.zoom(id.slice('preset:'.length));
+        return;
+      }
+      runTaskAction(id as TaskMenuItemId, target.id);
+    },
+
+    closeMenu() {
+      if (destroyed || !menu) return;
+      menu = null;
+      refresh();
+    },
+
+    zoom(target) {
+      if (destroyed || typeof target !== 'string') return false;
+      const current = view.timeline.preset;
+      const next =
+        target === 'in' || target === 'out'
+          ? zoomStep(current, target)
+          : VIEW_PRESETS.find((preset) => preset.id === target);
+      if (!next || next === current || isEqual(next, current)) return false;
+      const { width, scrollLeft } = state.viewport;
+      const middle = width > 0 ? state.timeAxis.xToDate(scrollLeft + width / 2) : null;
+      view = resolveViewOptions({ preset: next }, view);
+      zoomed = true;
+      tooltip = null;
+      refresh();
+      if (middle !== null) {
+        // Keep what was in the middle of the view there.
+        scrollTo = { left: Math.max(0, Math.round(state.timeAxis.dateToX(middle) - width / 2)) };
+        setState({ ...state, scrollTo });
+      }
+      behaviour.onPresetChange?.(next.id);
+      return true;
+    },
+
+    openTaskEditor(id) {
+      if (destroyed) return false;
+      closeEdit();
+      menu = null;
+      return taskEditor.open(id);
+    },
+
+    taskEditorAction(action) {
+      if (destroyed) return false;
+      const used = taskEditor.act(action);
+      announce();
+      return used;
+    },
+
+    doubleClick(point) {
+      if (destroyed || !interactionView || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+        return false;
+      const hit = barUnder(interactionView, point);
+      return hit ? controller.openTaskEditor(hit.taskId) : false;
+    },
+
     revealTop(id) {
       const index = destroyed ? undefined : visibleRows().rowIndex.get(id);
-      const { height, scrollTop } = state.viewport;
-      if (index === undefined || height <= 0) return null;
-      const top = index * state.rows.rowHeight;
-      const bottom = top + state.rows.rowHeight;
-      if (top < scrollTop) return top;
-      if (bottom > scrollTop + height) return bottom - height;
-      return null;
+      return index === undefined ? null : revealTopOf(index, state.viewport, state.rows.rowHeight);
     },
 
     toggle(id) {

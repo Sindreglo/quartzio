@@ -32,7 +32,7 @@ const SUB_DAY = new Set<TimeUnit>(['millisecond', 'second', 'minute', 'hour']);
  * Longer durations and spans are refused: most likely a typo (a year off by decades), and the scheduler can't
  * place tasks that long (it would keep the old dates).
  */
-const MAX_WORKING_DAYS = 5000;
+export const MAX_WORKING_DAYS = 5000;
 const MAX_SPAN_YEARS = 20;
 const MAX_SPAN = MAX_SPAN_YEARS * 365.25 * 24 * 60 * 60 * 1000;
 
@@ -68,14 +68,16 @@ export function editKind(
 const pad = (value: number, length = 2) => String(value).padStart(length, '0');
 
 /** A time as an `<input type="date">` or `datetime-local` value, in the project's time zone. */
-function inputValue(time: number, kind: 'date' | 'datetime', zone: TimeZone): string {
+export function inputValue(time: number, kind: 'date' | 'datetime', zone: TimeZone): string {
   const wall = toWallTime(time, zone);
   const date = `${pad(wall.year, 4)}-${pad(wall.month)}-${pad(wall.day)}`;
   return kind === 'date' ? date : `${date}T${pad(wall.hour)}:${pad(wall.minute)}`;
 }
 
 // Units as MS Project writes them; `m` is minutes, `mo` months.
-const UNIT_ABBREVIATIONS: Partial<Record<TimeUnit, string>> = {
+const UNIT_ABBREVIATIONS: Record<TimeUnit, string> = {
+  millisecond: 'ms',
+  second: 's',
   minute: 'm',
   hour: 'h',
   day: 'd',
@@ -85,6 +87,14 @@ const UNIT_ABBREVIATIONS: Partial<Record<TimeUnit, string>> = {
   year: 'y',
 };
 const UNIT_NAMES: Record<string, TimeUnit> = {
+  ms: 'millisecond',
+  millisecond: 'millisecond',
+  milliseconds: 'millisecond',
+  s: 'second',
+  sec: 'second',
+  secs: 'second',
+  second: 'second',
+  seconds: 'second',
   m: 'minute',
   min: 'minute',
   mins: 'minute',
@@ -138,15 +148,16 @@ export function initialText(
       // As in the column: an end at midnight is the end of the day before.
       return inputValue(atMidnight(dates, zone) ? dates.end - 1 : dates.end, 'date', zone);
     }
-    case 'duration': {
-      if (task.duration === null) return '';
-      const unit = UNIT_ABBREVIATIONS[task.durationUnit] ?? '';
-      return `${String(Math.round(task.duration * 100) / 100)}${unit}`;
-    }
+    case 'duration':
+      return task.duration === null ? '' : durationText(task.duration, task.durationUnit);
     case 'percentDone':
       return String(task.percentDone);
   }
 }
+
+/** A duration as the field shows it, e.g. `4d` or `-1.5h`. */
+export const durationText = (value: number, unit: TimeUnit): string =>
+  `${String(Math.round(value * 100) / 100)}${UNIT_ABBREVIATIONS[unit]}`;
 
 const atMidnight = (dates: TaskDates, zone: TimeZone) =>
   dates.end > dates.start && startOfUnit(dates.end, 'day', zone) === dates.end;
@@ -267,7 +278,7 @@ export function parseDuration(text: string, fallback: TimeUnit): { value: number
 }
 
 /** The wall-clock date (and time) of an `<input type="date">` or `datetime-local` value. */
-function parseInputDate(
+export function parseInputDate(
   text: string,
   kind: EditKind,
 ): { year: number; month: number; day: number; hour: number; minute: number } | string {

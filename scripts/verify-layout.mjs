@@ -26,6 +26,7 @@ const DEMOS =
         'selection',
         'selection:big',
         'editing',
+        'menus',
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
@@ -673,6 +674,146 @@ async function editingChecks(send, demo) {
   return problems;
 }
 
+// Menus and the task editor with a real mouse and keys: a right-click opens the menu at the pointer, focused and
+// inside the window (also near its corner), the submenu opens on hover inside the window, Escape gives focus back;
+// the time axis menu zooms; a double-click on a bar opens the dialog, and Enter saves what was typed.
+async function menuChecks(send, demo, shot) {
+  if (demo !== 'menus') return [];
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
+  const problems = [];
+  const mouse = async (type, x, y, button = 'left', clickCount = 1) => {
+    const buttons = type === 'mousePressed' ? (button === 'right' ? 2 : 1) : 0;
+    await send('Input.dispatchMouseEvent', { type, x, y, button, buttons, clickCount });
+  };
+  const click = async (x, y, button = 'left') => {
+    await mouse('mouseMoved', x, y);
+    await mouse('mousePressed', x, y, button);
+    await mouse('mouseReleased', x, y, button);
+    await sleep(250);
+  };
+  const doubleClick = async (x, y) => {
+    await mouse('mouseMoved', x, y);
+    for (const count of [1, 2]) {
+      await mouse('mousePressed', x, y, 'left', count);
+      await mouse('mouseReleased', x, y, 'left', count);
+    }
+    await sleep(300);
+  };
+  const press = async (key, code, vk) => {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: vk });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk });
+    await sleep(200);
+  };
+  const box = (selector) =>
+    evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) return null;
+      const r = element.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    })()`);
+  const inWindow = (r) =>
+    evaluate(
+      `${String(r.left)} >= 0 && ${String(r.top)} >= 0 && ${String(r.right)} <= innerWidth && ${String(r.bottom)} <= innerHeight`,
+    );
+  const itemAt = (text) =>
+    evaluate(`(() => {
+      const item = [...document.querySelectorAll('.qz-menu__item')].find((each) => each.textContent.includes(${JSON.stringify(text)}));
+      const r = item?.getBoundingClientRect();
+      return r ? { x: r.left + 20, y: r.top + r.height / 2 } : null;
+    })()`);
+  await sleep(800);
+
+  const row = await box('.qz-grid__row[data-key="s:design"]');
+  await click(row.left + 40, row.top + row.height / 2, 'right');
+  const menu = await box('.qz-menu');
+  const focused = await evaluate(`document.activeElement?.classList.contains('qz-menu')`);
+  if (!menu) problems.push('menus: no menu after a right-click on a row');
+  else {
+    if (Math.abs(menu.left - (row.left + 40)) > 2 || Math.abs(menu.top - (row.top + row.height / 2)) > 2)
+      problems.push(`menus: the menu is not at the pointer (${JSON.stringify(menu)})`);
+    if (!focused) problems.push('menus: the menu does not have focus');
+    const add = await itemAt('Add');
+    await mouse('mouseMoved', add.x, add.y);
+    await sleep(250);
+    const sub = await box('.qz-menu--sub');
+    if (!sub || !(await inWindow(sub)))
+      problems.push(`menus: the submenu is not shown inside the window (${JSON.stringify(sub)})`);
+    await shot('menu');
+    await press('Escape', 'Escape', 27);
+    await press('Escape', 'Escape', 27);
+    const back = await evaluate(
+      `({ open: !!document.querySelector('.qz-menu'), focused: document.activeElement === document.querySelector('.qz-gantt') })`,
+    );
+    if (back.open || !back.focused)
+      problems.push(`menus: Escape did not close the menu and give focus back (${JSON.stringify(back)})`);
+  }
+
+  // Near the window's corner: kept inside it.
+  const scroller = await box('.qz-gantt__scroller');
+  const lastRow = await box('.qz-timeline__row[data-key="s:long"]');
+  await click(Math.min(scroller.right, await evaluate('innerWidth')) - 12, lastRow.top + 10, 'right');
+  const corner = await box('.qz-menu');
+  if (!corner) problems.push('menus: no menu near the corner');
+  else if (!(await inWindow(corner)))
+    problems.push(`menus: the menu runs out of the window at the corner (${JSON.stringify(corner)})`);
+  await press('Escape', 'Escape', 27);
+
+  const header = await box('.qz-timeline__header');
+  const cellText = `document.querySelector('.qz-header__row:last-child .qz-header__cell')?.textContent`;
+  const before = await evaluate(cellText);
+  await click(header.left + 30, header.top + 10, 'right');
+  const zoomOut = await itemAt('Zoom out');
+  if (!zoomOut) problems.push('menus: no Zoom out in the time axis menu');
+  else {
+    await click(zoomOut.x, zoomOut.y);
+    const after = await evaluate(cellText);
+    if (after === before) problems.push(`menus: Zoom out did not change the time axis (${String(before)})`);
+    await click(header.left + 30, header.top + 10, 'right');
+    const zoomIn = await itemAt('Zoom in');
+    await click(zoomIn.x, zoomIn.y);
+  }
+
+  await evaluate(`document.querySelector('.qz-gantt__scroller').scrollTo(0, 0)`);
+  await sleep(300);
+  await reveal(evaluate, 's:design');
+  const bar = await box('.qz-timeline__row[data-key="s:design"] .qz-bar');
+  const x = bar.left + Math.min(15, bar.width / 2);
+  const y = bar.top + bar.height / 2;
+  await doubleClick(x, y);
+  const dialog = await box('dialog.qz-task-editor');
+  if (!dialog || !(await inWindow(dialog)))
+    problems.push(`menus: no task editor inside the window after a double-click (${JSON.stringify(dialog)})`);
+  else {
+    const name = await box('dialog.qz-task-editor input');
+    await click(name.left + 10, name.top + name.height / 2);
+    await evaluate(`document.activeElement.select()`);
+    await send('Input.insertText', { text: 'Design (dialog)' });
+    // With its text, as a real key: that's what submits a form.
+    const enter = {
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      text: '\r',
+      unmodifiedText: '\r',
+    };
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', ...enter });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...enter });
+    await sleep(200);
+    const saved = await evaluate(`({
+      open: !!document.querySelector('dialog.qz-task-editor'),
+      
+      name: document.querySelector('.qz-grid__row[data-key="s:design"] .qz-grid__text')?.textContent,
+      focused: document.activeElement === document.querySelector('.qz-gantt'),
+    })`);
+    if (saved.open || saved.name !== 'Design (dialog)')
+      problems.push(`menus: Enter in the dialog did not save (${JSON.stringify(saved)})`);
+    // Open again for the screenshot.
+    await doubleClick(x, y);
+  }
+  return problems;
+}
+
 // Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
 // scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
 // the day), and the bar must sit on a day boundary.
@@ -906,6 +1047,13 @@ try {
       problems.push(...(await dragChecks(send, id)));
       problems.push(...(await selectionChecks(send, id)));
       problems.push(...(await editingChecks(send, id)));
+      problems.push(
+        ...(await menuChecks(send, id, async (suffix) => {
+          const extra = await send('Page.captureScreenshot', { format: 'png' });
+          const name = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}-${suffix}.png`;
+          writeFileSync(join(OUT, name), Buffer.from(extra.result.data, 'base64'));
+        })),
+      );
       const label = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}`;
       const file = join(OUT, `${label}.png`);
       const shot = await send('Page.captureScreenshot', { format: 'png' });

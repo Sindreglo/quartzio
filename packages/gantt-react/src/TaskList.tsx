@@ -1,22 +1,10 @@
-import type { CellEdit, ColumnsState, GanttController, KeyModifiers, Row } from '@quartzio/gantt';
-import {
-  type CSSProperties,
-  memo,
-  type MouseEvent,
-  type NamedExoticComponent,
-  type ReactElement,
-} from 'react';
+import type { CellEdit, ColumnsState, GanttController, Row } from '@quartzio/gantt';
+import { type CSSProperties, memo, type NamedExoticComponent, type ReactElement } from 'react';
 import { CellEditor } from './CellEditor';
+import { chartPoint, modifiersOf } from './events';
 
 /** The id of a row's element, for `aria-activedescendant` (encoded: task ids may contain spaces). */
 export const rowElementId = (prefix: string, row: Row): string => `${prefix}-${encodeURIComponent(row.key)}`;
-
-const modifiersOf = (event: MouseEvent): KeyModifiers => ({
-  shift: event.shiftKey,
-  ctrl: event.ctrlKey,
-  meta: event.metaKey,
-  alt: event.altKey,
-});
 
 export const TaskListHeader: NamedExoticComponent<{ columns: ColumnsState; height: number }> = memo(
   function TaskListHeader({ columns, height }: { columns: ColumnsState; height: number }): ReactElement {
@@ -66,6 +54,11 @@ const TaskRow = memo(function TaskRow({
       aria-selected={row.selected}
       onClick={(event) => {
         gantt.rowClick(row.id, modifiersOf(event));
+      }}
+      onContextMenu={(event) => {
+        // In the cell's field, the browser's menu (copy, paste) is the one wanted.
+        if (event.target instanceof HTMLInputElement) return;
+        if (gantt.openMenu({ kind: 'task', id: row.id }, chartPoint(event))) event.preventDefault();
       }}
       // Rows are virtualized, so tell assistive tech where each one is (the header row is 1).
       aria-rowindex={row.index + 2}

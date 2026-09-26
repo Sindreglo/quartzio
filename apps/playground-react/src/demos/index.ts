@@ -6,6 +6,7 @@ import { DataModelDemo } from './data-model';
 import { DependenciesDemo } from './dependencies';
 import { DragDemo } from './drag';
 import { EditingDemo } from './editing';
+import { MenusDemo } from './menus';
 import { SchedulingDemo } from './scheduling';
 import { SelectionDemo } from './selection';
 import { TaskListDemo } from './task-list';
@@ -96,5 +97,12 @@ export const demos: Demo[] = [
     description:
       'Hover a bar for its tooltip. Double-click a cell (or press Enter/F2 on a selected row) to edit it: names, dates in native date fields, durations like 4d or 2w, and % done. The engine reads and validates the value; each edit is one undoable change.',
     Component: EditingDemo,
+  },
+  {
+    id: 'menus',
+    title: 'Menus & task editor',
+    description:
+      'Right-click a row or bar (or press the ContextMenu key / Shift+F10) for the task menu: edit, add tasks around it, indent, outdent, convert to milestone, delete. Right-click the time axis to zoom. Double-click a bar to edit the task in a dialog; Save is one undoable change.',
+    Component: MenusDemo,
   },
 ];

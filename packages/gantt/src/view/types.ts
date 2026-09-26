@@ -7,6 +7,8 @@ import type { DependencyLine } from './dependencies';
 import type { ProposedChange, TaskInteraction, TimelineHit, TimelinePoint } from './interaction';
 import type { HistoryState } from './history';
 import type { CellEdit } from './editing';
+import type { MenuCustomizer, MenuState, MenuTarget } from './menu';
+import type { TaskEditorAction, TaskEditorState } from './taskEditor';
 import type { KeyInput } from './keyboard';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
@@ -65,6 +67,20 @@ export interface ViewState {
   readonly tooltip: TaskTooltip | null;
   /** The cell being edited, or `null`. */
   readonly editing: CellEdit | null;
+  /** The open context menu, or `null`. */
+  readonly menu: MenuState | null;
+  /** The open task editor, or `null`. */
+  readonly taskEditor: TaskEditorState | null;
+  /**
+   * Where the renderer should scroll to (after zooming, or to show a new task). A new object for each request:
+   * scroll when it changes.
+   */
+  readonly scrollTo: ScrollRequest | null;
+}
+
+export interface ScrollRequest {
+  readonly left?: number;
+  readonly top?: number;
 }
 
 export interface Interactions {
@@ -158,6 +174,20 @@ export interface GanttOptions {
   taskTooltip?: boolean | undefined;
   /** Edit cells in the task list (double-click, Enter/F2). Default `true`. See ADR 0011 for what an edit does. */
   cellEdit?: boolean | undefined;
+  /** A context menu on tasks (right-click, the ContextMenu key or Shift+F10). Default `true`. */
+  taskMenu?: boolean | undefined;
+  /** A context menu on the time axis header, for zooming. Default `true`. */
+  timeAxisMenu?: boolean | undefined;
+  /** Change the task menu: gets the built-in items, returns the items to show. */
+  taskMenuItems?: MenuCustomizer | undefined;
+  /** Change the time axis menu: gets the built-in items, returns the items to show. */
+  timeAxisMenuItems?: MenuCustomizer | undefined;
+  /** Edit tasks in a dialog (the menu's Edit, or double-clicking a bar). Default `true`. */
+  taskEdit?: boolean | undefined;
+  /** Ids for tasks added from the menu. Defaults to unique ids like `task-12`. */
+  createTaskId?: (() => Id) | undefined;
+  /** Called with the preset's id after zooming (a zoom lasts until the `preset` option changes). */
+  onPresetChange?: ((presetId: string) => void) | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,
@@ -242,6 +272,26 @@ export interface GanttController {
   /** Saves the edit. Returns `false` (and keeps it open, with the reason in `error`) when it's refused. */
   commitEdit: () => boolean;
   cancelEdit: () => void;
+  /**
+   * Opens a context menu for a task or the time axis, at a point in the chart's coordinates (from the root
+   * element's corner); without one, at the active row. Returns whether it opened.
+   */
+  openMenu: (target: MenuTarget, point?: { x: number; y: number }) => boolean;
+  /** A key pressed while the menu has focus. Returns whether it was used. */
+  menuKeyDown: (key: KeyInput) => boolean;
+  /** The pointer over a menu item: highlights it (and opens its submenu). */
+  menuHover: (id: string) => void;
+  /** Picks a menu item (and closes the menu). Disabled and unknown items are ignored. */
+  menuAction: (id: string) => void;
+  closeMenu: () => void;
+  /** Zooms one step (`'in'` or `'out'`) or to a built-in preset by id, keeping the middle of the view. */
+  zoom: (target: string) => boolean;
+  /** Opens the task editor. Returns whether it opened. */
+  openTaskEditor: (id: Id) => boolean;
+  /** Everything done in the task editor: typing, tabs, dependencies, saving, closing. */
+  taskEditorAction: (action: TaskEditorAction) => boolean;
+  /** A double-click on the timeline body: opens the editor for the bar there. Returns whether it did. */
+  doubleClick: (point: TimelinePoint) => boolean;
   /** Expands a collapsed task or collapses an expanded one. Unknown ids and leaf tasks are ignored. */
   toggle: (id: Id) => void;
   setExpanded: (id: Id, expanded: boolean) => void;

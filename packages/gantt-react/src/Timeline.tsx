@@ -11,9 +11,10 @@ import type {
   TimeSpan,
   TodayLine,
 } from '@quartzio/gantt';
-import { memo, type PointerEvent, type ReactElement, useEffect, useId, useRef } from 'react';
+import { memo, type MouseEvent, type ReactElement, useEffect, useId, useRef } from 'react';
 import { BarHandles, TaskBar } from './Bars';
 import { DraftBar, DraftLink } from './Drafts';
+import { chartPoint } from './events';
 import { type RenderTaskTooltip, TaskTooltipView } from './Tooltip';
 
 // Rows get the same array while scrolling within the rendered window, so memo skips most re-renders.
@@ -140,7 +141,7 @@ const TimelineRow = memo(function TimelineRow({
 });
 
 /** Timeline coordinates of a pointer event: the body moves with scrolling, so its box is the origin. */
-function pointOf(event: PointerEvent<HTMLElement>): TimelinePoint {
+function pointOf(event: MouseEvent<HTMLElement>): TimelinePoint {
   const box = event.currentTarget.getBoundingClientRect();
   return { x: event.clientX - box.left, y: event.clientY - box.top };
 }
@@ -254,6 +255,15 @@ export function TimelineBody({
       }}
       onPointerLeave={() => {
         gantt.hover(null);
+      }}
+      onDoubleClick={(event) => {
+        gantt.doubleClick(pointOf(event));
+      }}
+      onContextMenu={(event) => {
+        // The row under the pointer (rows span the whole width).
+        const key = (event.target as HTMLElement).closest<HTMLElement>('.qz-timeline__row')?.dataset.key;
+        const row = rows.find((each) => each.key === key);
+        if (row && gantt.openMenu({ kind: 'task', id: row.id }, chartPoint(event))) event.preventDefault();
       }}
       onPointerCancel={(event) => {
         if (event.isPrimary) gantt.cancelInteraction();

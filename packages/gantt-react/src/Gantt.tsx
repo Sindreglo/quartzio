@@ -11,10 +11,13 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type WheelEvent,
 } from 'react';
 import { useGridKeyboard } from './keyboard';
+import { chartPoint } from './events';
+import { ContextMenu } from './Menu';
 import { engineOptions } from './options';
+import { type RenderTaskEditor, TaskEditorDialog } from './TaskEditor';
+import { Scrollbars, scrollbarSize } from './Scrollbars';
 import { follow, isEcho } from './scrollSync';
 import { rowElementId, TaskListBody, TaskListHeader } from './TaskList';
 import { TimelineBody, TimelineHeader } from './Timeline';
@@ -34,6 +37,8 @@ export interface GanttProps extends GanttOptions {
   ref?: Ref<GanttController> | undefined;
   /** Replaces the content of the task tooltip (turn it off with `taskTooltip={false}`). */
   renderTaskTooltip?: RenderTaskTooltip | undefined;
+  /** Replaces the content of the task editor dialog (turn it off with `taskEdit={false}`). */
+  renderTaskEditor?: RenderTaskEditor | undefined;
 }
 
 export function Gantt(props: GanttProps): ReactElement {
@@ -127,19 +132,11 @@ export function Gantt(props: GanttProps): ReactElement {
     follow(listBodyRef.current, 'scrollLeft', listScrollbarRef.current);
   }, [layout.horizontal, layout.vertical]);
 
-  const keyboard = useGridKeyboard(gantt, scrollerRef, state.editing);
+  const keyboard = useGridKeyboard(gantt, scrollerRef, state.editing, state.scrollTo);
   const focusChart = useCallback(() => {
     rootRef.current?.focus({ preventScroll: true });
   }, []);
   const activeRow = rows.items.find((row) => row.active);
-
-  // The scrollbars can only scroll in their own direction; pass the other one on to the content.
-  const forwardWheel = (event: WheelEvent) => {
-    scrollerRef.current?.scrollBy(
-      event.currentTarget === verticalScrollbarRef.current ? event.deltaX : 0,
-      event.currentTarget === verticalScrollbarRef.current ? 0 : event.deltaY,
-    );
-  };
 
   const overlay = layout.scrollbar === 0;
   const classNames = ['qz-gantt'];
@@ -170,6 +167,10 @@ export function Gantt(props: GanttProps): ReactElement {
       // away, and then there's nothing to point at until it's scrolled back).
       aria-activedescendant={activeRow ? rowElementId(idPrefix, activeRow) : undefined}
       {...keyboard}
+      // The ContextMenu key opens the engine's menu (through keyDown); not the browser's too.
+      onContextMenu={(event) => {
+        if (event.target === event.currentTarget && gantt.getState().menu) event.preventDefault();
+      }}
     >
       <div ref={sizerRef} className="qz-gantt__sizer" />
       <div
@@ -189,7 +190,13 @@ export function Gantt(props: GanttProps): ReactElement {
           <div ref={listHeaderRef} className="qz-list__header">
             <TaskListHeader columns={state.columns} height={header.height} />
           </div>
-          <div className="qz-timeline__header" aria-hidden="true">
+          <div
+            className="qz-timeline__header"
+            aria-hidden="true"
+            onContextMenu={(event) => {
+              if (gantt.openMenu({ kind: 'timeAxis' }, chartPoint(event))) event.preventDefault();
+            }}
+          >
             <div className="qz-timeline__header-canvas">
               <TimelineHeader header={header} />
             </div>
@@ -234,56 +241,25 @@ export function Gantt(props: GanttProps): ReactElement {
           />
         </div>
       </div>
-      <div
-        ref={verticalScrollbarRef}
-        className="qz-gantt__scrollbar-y"
-        tabIndex={-1}
-        aria-hidden="true"
-        onScroll={(event) => {
-          if (!isEcho(event.currentTarget, 'scrollTop'))
-            follow(event.currentTarget, 'scrollTop', scrollerRef.current);
-        }}
-        onWheel={forwardWheel}
-      >
-        <div style={{ height: rows.totalHeight }} />
-      </div>
-      <div className="qz-gantt__footer" aria-hidden="true">
-        <div
-          ref={listScrollbarRef}
-          className="qz-list__scrollbar"
-          tabIndex={-1}
-          onScroll={(event) => {
-            if (!isEcho(event.currentTarget, 'scrollLeft'))
-              follow(event.currentTarget, 'scrollLeft', listBodyRef.current);
-          }}
-          onWheel={forwardWheel}
-        >
-          <div style={{ width: listWidth }} />
-        </div>
-        <div
-          ref={timelineScrollbarRef}
-          className="qz-timeline__scrollbar"
-          tabIndex={-1}
-          onScroll={(event) => {
-            if (!isEcho(event.currentTarget, 'scrollLeft'))
-              follow(event.currentTarget, 'scrollLeft', scrollerRef.current);
-          }}
-          onWheel={forwardWheel}
-        >
-          <div style={{ width: timeAxis.totalWidth }} />
-        </div>
-      </div>
+      {state.menu && <ContextMenu gantt={gantt} menu={state.menu} rootRef={rootRef} onDone={focusChart} />}
+      {state.taskEditor && (
+        <TaskEditorDialog
+          gantt={gantt}
+          editor={state.taskEditor}
+          render={props.renderTaskEditor}
+          onDone={focusChart}
+        />
+      )}
+      <Scrollbars
+        scrollerRef={scrollerRef}
+        listBodyRef={listBodyRef}
+        verticalRef={verticalScrollbarRef}
+        listRef={listScrollbarRef}
+        timelineRef={timelineScrollbarRef}
+        height={rows.totalHeight}
+        listWidth={listWidth}
+        timelineWidth={timeAxis.totalWidth}
+      />
     </div>
   );
-}
-
-/** The native scrollbar thickness, measured inside the chart so page-level scrollbar styles count. */
-function scrollbarSize(root: HTMLElement): number {
-  const probe = document.createElement('div');
-  probe.style.cssText =
-    'position:absolute;top:0;left:0;width:100px;height:100px;overflow:scroll;visibility:hidden';
-  root.appendChild(probe);
-  const size = probe.offsetHeight - probe.clientHeight;
-  probe.remove();
-  return size;
 }

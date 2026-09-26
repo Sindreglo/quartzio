@@ -1,7 +1,7 @@
 import type { CellEdit, GanttController } from '@quartzio/gantt';
 import { type ReactElement, useLayoutEffect, useRef } from 'react';
 
-const INPUT_TYPES = {
+export const INPUT_TYPES = {
   text: 'text',
   duration: 'text',
   percent: 'text',

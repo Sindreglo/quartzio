@@ -33,6 +33,7 @@ export type KeyCommand =
   | { readonly type: 'expand'; readonly id: Id; readonly expanded: boolean }
   | { readonly type: 'delete'; readonly ids: readonly Id[]; readonly selection: Selection }
   | { readonly type: 'edit'; readonly id: Id }
+  | { readonly type: 'menu'; readonly id: Id }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' };
 
@@ -110,6 +111,10 @@ export function keyCommand(input: KeyInput, context: KeyContext): KeyCommand | n
     }
     case ' ':
       return { type: 'select', selection: toggleRow(selection, current, context, context.multiSelect) };
+    case 'ContextMenu':
+      return { type: 'menu', id };
+    case 'F10':
+      return shift && !mod ? { type: 'menu', id } : null;
     case 'Enter':
     case 'F2':
       return context.cellEdit && !mod && !shift ? { type: 'edit', id } : null;

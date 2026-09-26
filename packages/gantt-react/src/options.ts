@@ -26,6 +26,13 @@ const OPTION_KEYS = [
   'onSelectionChange',
   'taskTooltip',
   'cellEdit',
+  'taskMenu',
+  'timeAxisMenu',
+  'taskMenuItems',
+  'timeAxisMenuItems',
+  'taskEdit',
+  'createTaskId',
+  'onPresetChange',
 ] as const satisfies readonly (keyof GanttOptions)[];
 // Fails to compile when GanttOptions gets an option that isn't listed.
 const _allListed: Exclude<keyof GanttOptions, (typeof OPTION_KEYS)[number] | 'data'> extends never
