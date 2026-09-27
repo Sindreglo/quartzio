@@ -257,3 +257,59 @@ body {
   padding-left: 18px;
   font-size: 13px;
 }
+
+/* --- Version 0.1 scenarios --- */
+.pg-scenario h3 {
+  margin: 8px 0 4px;
+}
+
+.pg-scenario > p {
+  margin: 0 0 12px;
+  max-width: 900px;
+}
+
+.pg-code pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.pg-power {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .pg-power {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pg-panel {
+  padding: 12px 16px;
+  font-size: 13px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.pg-panel h3 {
+  margin: 4px 0 8px;
+  font-size: 14px;
+}
+
+.pg-panel ul,
+.pg-log {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.pg-panel li {
+  margin-bottom: 6px;
+}

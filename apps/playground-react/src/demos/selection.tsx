@@ -1,8 +1,9 @@
-import type { GanttController, HistoryState, Id, ProjectInput } from '@quartzio/gantt';
+import type { GanttController, Id, ProjectInput } from '@quartzio/gantt';
 import { Gantt } from '@quartzio/gantt-react';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { generateProject } from '../data/generate';
 import { sampleProject } from '../data/sampleProject';
+import { useHistory } from './useHistory';
 
 const datasets = {
   sample: (): ProjectInput => ({ ...sampleProject, settings: { timeZone: 'Europe/Oslo' } }),
@@ -24,20 +25,6 @@ const datasets = {
   empty: (): ProjectInput => ({ tasks: [] }),
 };
 type Dataset = keyof typeof datasets;
-
-/** Keeps the history state of the chart behind `ref` (for the Undo and Redo buttons). */
-function useHistory(ref: RefObject<GanttController | null>): HistoryState {
-  const [history, setHistory] = useState<HistoryState>({ canUndo: false, canRedo: false });
-  useEffect(() => {
-    const gantt = ref.current;
-    if (!gantt) return;
-    setHistory(gantt.getState().history);
-    return gantt.subscribe((state) => {
-      setHistory(state.history);
-    });
-  }, [ref]);
-  return history;
-}
 
 /**
  * Selection, keyboard and undo/redo. Click rows (in the list or the timeline), Ctrl/Cmd-click to toggle,

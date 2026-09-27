@@ -11,6 +11,7 @@ import { SchedulingDemo } from './scheduling';
 import { SelectionDemo } from './selection';
 import { TaskListDemo } from './task-list';
 import { TimeAxisDemo } from './timeaxis';
+import { Version01Demo } from './version-0-1';
 
 export interface Demo {
   /** Used in the URL hash, e.g. #basic */
@@ -22,6 +23,13 @@ export interface Demo {
 
 // One demo per feature. Register new demos here so they show up in the menu.
 export const demos: Demo[] = [
+  {
+    id: 'version-0.1',
+    title: 'Version 0.1 scenarios',
+    description:
+      'The first release put to the test with realistic plans: an everyday user with a small plan and no options, and a power user running a construction program (up to 9 400 tasks) with most of the library wired up.',
+    Component: Version01Demo,
+  },
   {
     id: 'basic',
     title: 'Basic',

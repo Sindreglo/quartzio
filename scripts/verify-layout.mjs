@@ -27,6 +27,7 @@ const DEMOS =
         'selection:big',
         'editing',
         'menus',
+        'version-0.1',
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
@@ -53,12 +54,13 @@ if (!chromePath) {
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// Layout checks, evaluated in the page. Each returns a list of problems (empty = fine).
-const CHECKS = `(() => {
+// Layout checks for one chart (`root` is its .qz-gantt element), evaluated in the page. Each returns a list of
+// problems (empty = fine).
+const CHECKS_FOR_CHART = `(root) => {
   const problems = [];
   const width = (element) => Math.round(element.getBoundingClientRect().width * 10) / 10;
-  const header = [...document.querySelectorAll('.qz-grid__header-cell')].map(width);
-  for (const row of [...document.querySelectorAll('.qz-grid__row')].slice(0, 20)) {
+  const header = [...root.querySelectorAll('.qz-grid__header-cell')].map(width);
+  for (const row of [...root.querySelectorAll('.qz-grid__row')].slice(0, 20)) {
     const cells = [...row.querySelectorAll('.qz-grid__cell')].map(width);
     if (cells.some((cell, i) => Math.abs(cell - header[i]) > 0.5)) {
       problems.push('cell widths ' + JSON.stringify(cells) + ' differ from header ' + JSON.stringify(header));
@@ -66,8 +68,8 @@ const CHECKS = `(() => {
     }
   }
   // The task list may only scroll horizontally when it is capped at its max width (default 60%).
-  const list = document.querySelector('.qz-list__body');
-  const gantt = document.querySelector('.qz-gantt');
+  const list = root.querySelector('.qz-list__body');
+  const gantt = root;
   if (list && gantt && list.scrollWidth > list.clientWidth) {
     const max = getComputedStyle(gantt).getPropertyValue('--qz-list-max-width').trim() || '60%';
     const maxWidth = max.endsWith('%') ? (gantt.clientWidth * parseFloat(max)) / 100 : parseFloat(max);
@@ -75,11 +77,11 @@ const CHECKS = `(() => {
       problems.push('task list scrolls horizontally although it is narrower than its max width');
     }
   }
-  const timelineHeader = document.querySelector('.qz-timeline__header');
-  const scroller = document.querySelector('.qz-gantt__scroller');
-  const listHeader = document.querySelector('.qz-list__header');
-  const listBody = document.querySelector('.qz-list__body');
-  const body = document.querySelector('.qz-timeline__body');
+  const timelineHeader = root.querySelector('.qz-timeline__header');
+  const scroller = root.querySelector('.qz-gantt__scroller');
+  const listHeader = root.querySelector('.qz-list__header');
+  const listBody = root.querySelector('.qz-list__body');
+  const body = root.querySelector('.qz-timeline__body');
   // The rows start right below the headers, at the same height on both sides.
   for (const [rows, head, name] of [[listBody, listHeader, 'task list'], [body, timelineHeader, 'timeline']]) {
     if (!rows || !head) continue;
@@ -88,7 +90,7 @@ const CHECKS = `(() => {
   }
   // The task list is equally wide in the header, the rows and the footer.
   const paneWidths = ['.qz-list__header', '.qz-list__body', '.qz-list__scrollbar']
-    .map((selector) => document.querySelector(selector))
+    .map((selector) => root.querySelector(selector))
     .filter((element) => element && element.offsetParent)
     .map(width);
   if (paneWidths.some((paneWidth) => Math.abs(paneWidth - paneWidths[0]) > 0.5)) {
@@ -112,7 +114,7 @@ const CHECKS = `(() => {
     ['.qz-gantt__scrollbar-y', 'y', scroller],
     ['.qz-list__scrollbar', 'x', listBody],
   ]) {
-    const bar = document.querySelector(selector);
+    const bar = root.querySelector(selector);
     if (!bar || !content || !bar.offsetParent) continue;
     if (Math.abs(range(bar, axis) - range(content, axis)) > 1) {
       problems.push(selector + ' scrolls ' + range(bar, axis) + 'px, the content ' + range(content, axis) + 'px');
@@ -122,9 +124,9 @@ const CHECKS = `(() => {
     problems.push('the page scrolls horizontally');
   }
   // Every timeline row sits at the same height as its task list row, and its bar stays inside the row.
-  const listRows = new Map([...document.querySelectorAll('.qz-grid__row')].map((row) => [row.dataset.key, row]));
+  const listRows = new Map([...root.querySelectorAll('.qz-grid__row')].map((row) => [row.dataset.key, row]));
   const listBottom = listBody ? listBody.getBoundingClientRect().bottom : Infinity;
-  const timelineRows = [...document.querySelectorAll('.qz-timeline__row')];
+  const timelineRows = [...root.querySelectorAll('.qz-timeline__row')];
   if (listRows.size > 0 && timelineRows.length === 0) problems.push('the timeline has no rows');
   for (const row of timelineRows) {
     const rowRect = row.getBoundingClientRect();
@@ -152,11 +154,11 @@ const CHECKS = `(() => {
   // task starts at 12:00.)
   if (location.hash === '#bars' && scroller) {
     const view = scroller.getBoundingClientRect();
-    const ticks = [...document.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].flatMap((cell) => {
+    const ticks = [...root.querySelectorAll('.qz-header__row:last-child .qz-header__cell')].flatMap((cell) => {
       const { left, width } = cell.getBoundingClientRect();
       return [left, left + width / 3, left + (2 * width) / 3];
     });
-    const bars = [...document.querySelectorAll('.qz-bar')];
+    const bars = [...root.querySelectorAll('.qz-bar')];
     if (bars.length === 0) problems.push('the demo shows no bars');
     for (const bar of bars) {
       const rect = bar.getBoundingClientRect();
@@ -171,7 +173,7 @@ const CHECKS = `(() => {
   }
   // Dependency lines leave the predecessor's side (end for FS/FF, start for SS/SF) and enter the successor's
   // side (start for FS/SS, end for FF/SF), at a height within each bar. Demos with dependencies must draw some.
-  const chart = document.querySelector('.qz-gantt');
+  const chart = root;
   const timelineBody = chart?.querySelector('.qz-timeline__body');
   if (chart && timelineBody) {
     const origin = timelineBody.getBoundingClientRect();
@@ -223,9 +225,9 @@ const CHECKS = `(() => {
   if (vertical && vertical.scrollHeight > vertical.clientHeight + 1) {
     vertical.scrollTop = Math.min(500, vertical.scrollHeight - vertical.clientHeight);
     const view = vertical.getBoundingClientRect();
-    const listRows = new Map([...document.querySelectorAll('.qz-grid__row')].map((row) => [row.dataset.key, row]));
+    const listRows = new Map([...root.querySelectorAll('.qz-grid__row')].map((row) => [row.dataset.key, row]));
     let compared = 0;
-    for (const row of document.querySelectorAll('.qz-timeline__row')) {
+    for (const row of root.querySelectorAll('.qz-timeline__row')) {
       const top = row.getBoundingClientRect().top;
       const listRow = listRows.get(row.dataset.key);
       if (!listRow || top < view.top || top > view.bottom) continue;
@@ -238,6 +240,14 @@ const CHECKS = `(() => {
     if (compared === 0) problems.push('no rows in view after scrolling');
   }
   return problems;
+}`;
+// Every chart on the page (a demo may show several).
+const CHECKS = `(() => {
+  const check = ${CHECKS_FOR_CHART};
+  const roots = [...document.querySelectorAll('.qz-gantt')];
+  return roots.flatMap((root, index) =>
+    check(root).map((problem) => (roots.length > 1 ? 'chart ' + String(index + 1) + ': ' + problem : problem)),
+  );
 })()`;
 
 // Horizontal scrolling: right after a scroll, before any scroll event has run, the timeline header still lines
@@ -814,6 +824,140 @@ async function menuChecks(send, demo, shot) {
   return problems;
 }
 
+// The version 0.1 scenarios, as a power user would use them (the second chart on the page): a completed task
+// can't be dragged (the app's validator), the app's own menu items work, the selection panel follows the chart;
+// then the portfolio of 80 buildings (~9 400 tasks) loads and scrolls without long frames.
+async function scenarioChecks(send, demo, shot) {
+  if (demo !== 'version-0.1') return [];
+  const evaluate = async (expression, awaitPromise = false) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise })).result?.result?.value;
+  const problems = [];
+  const mouse = async (type, x, y, button = 'left') => {
+    const buttons = type === 'mousePressed' || (type === 'mouseMoved' && button === 'drag') ? 1 : 0;
+    await send('Input.dispatchMouseEvent', {
+      type,
+      x,
+      y,
+      button: button === 'drag' ? 'left' : button,
+      buttons,
+      clickCount: 1,
+    });
+  };
+  const chart = `document.querySelectorAll('.qz-gantt')[1]`;
+  const box = (selector) =>
+    evaluate(`(() => {
+      const element = ${chart}.querySelector(${JSON.stringify(selector)});
+      if (!element) return null;
+      const r = element.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+  const cellText = (key, column) =>
+    evaluate(
+      `${chart}.querySelector('.qz-grid__row[data-key="${key}"]')?.querySelectorAll('.qz-grid__cell')[${column}]?.textContent`,
+    );
+  await sleep(500);
+  // The general checks scroll every chart; start from the top-left.
+  await evaluate(`${chart}.querySelector('.qz-gantt__scroller').scrollTo(0, 0)`);
+  await evaluate(`${chart}.scrollIntoView({ block: 'start' })`);
+  await sleep(400);
+
+  // A completed task (Concept design, 100%) is locked by the app's validator.
+  const concept = await box('.qz-timeline__row[data-key="s:concept"] .qz-bar');
+  if (!concept) problems.push('version-0.1: no Concept design bar in view');
+  else {
+    const before = await cellText('s:concept', 2);
+    const x = concept.left + Math.min(8, concept.width / 3);
+    await mouse('mouseMoved', x, concept.y);
+    await mouse('mousePressed', x, concept.y);
+    for (let step = 1; step <= 6; step++) await mouse('mouseMoved', x + step * 12, concept.y, 'drag');
+    const tip = await evaluate(`${chart}.querySelector('.qz-drag-tooltip')?.textContent`);
+    await mouse('mouseReleased', x + 72, concept.y);
+    await sleep(300);
+    const after = await cellText('s:concept', 2);
+    if (!tip?.includes('locked'))
+      problems.push(`version-0.1: dragging a completed task shows no refusal (${String(tip)})`);
+    if (after !== before)
+      problems.push(`version-0.1: a completed task moved (${String(before)} → ${String(after)})`);
+  }
+
+  // The app's own menu items: Mark complete, and the Responsible submenu.
+  const row = await box('.qz-grid__row[data-key="s:excavation"]');
+  await mouse('mouseMoved', row.left + 120, row.y);
+  await mouse('mousePressed', row.left + 120, row.y, 'right');
+  await mouse('mouseReleased', row.left + 120, row.y, 'right');
+  await sleep(250);
+  const labels = await evaluate(
+    `[...document.querySelectorAll('.qz-menu__item')].map((item) => item.textContent)`,
+  );
+  if (
+    !labels?.some((label) => label.includes('Mark complete')) ||
+    !labels.some((label) => label.includes('Responsible'))
+  )
+    problems.push(`version-0.1: the app's menu items are missing (${JSON.stringify(labels)})`);
+  const complete = await evaluate(`(() => {
+    const item = [...document.querySelectorAll('.qz-menu__item')].find((each) => each.textContent.includes('Mark complete'));
+    const r = item?.getBoundingClientRect();
+    return r ? { x: r.left + 20, y: r.top + r.height / 2 } : null;
+  })()`);
+  if (complete) {
+    await mouse('mouseMoved', complete.x, complete.y);
+    await mouse('mousePressed', complete.x, complete.y);
+    await mouse('mouseReleased', complete.x, complete.y);
+    await sleep(300);
+    const done = await cellText('s:excavation', 5);
+    if (done !== '100%') problems.push(`version-0.1: Mark complete did not set 100% (${String(done)})`);
+  }
+  const panel = await evaluate(`document.querySelector('.pg-panel')?.textContent ?? ''`);
+  if (!panel.includes('Excavation'))
+    problems.push('version-0.1: the selection panel does not show the selected task');
+  await shot('power');
+
+  // The portfolio of 80 buildings: how long it takes to show, and whether scrolling stays smooth.
+  const loaded = await evaluate(
+    `(async () => {
+      const select = [...document.querySelectorAll('select')].find((each) => [...each.options].some((option) => option.value === '80'));
+      const started = performance.now();
+      select.value = '80';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      for (let i = 0; i < 200; i++) {
+        await new Promise((done) => requestAnimationFrame(done));
+        if (Number(${chart}.getAttribute('aria-rowcount')) > 9000) break;
+      }
+      await new Promise((done) => requestAnimationFrame(done));
+      return { ms: Math.round(performance.now() - started), rows: Number(${chart}.getAttribute('aria-rowcount')) - 1 };
+    })()`,
+    true,
+  );
+  const scrolling = await evaluate(
+    `(async () => {
+      const scroller = ${chart}.querySelector('.qz-gantt__scroller');
+      const frames = [];
+      let last = performance.now();
+      for (let i = 0; i < 60; i++) {
+        scroller.scrollTop += 900;
+        if (i % 10 === 0) scroller.scrollLeft += 300;
+        await new Promise((done) => requestAnimationFrame(done));
+        const now = performance.now();
+        frames.push(now - last);
+        last = now;
+      }
+      frames.sort((a, b) => a - b);
+      return { median: Math.round(frames[30]), worst: Math.round(frames[59]), rows: ${chart}.querySelectorAll('.qz-grid__row').length };
+    })()`,
+    true,
+  );
+  console.log(
+    `         · 80 buildings: ${String(loaded?.rows)} rows shown after ${String(loaded?.ms)} ms; scrolling frames median ${String(scrolling?.median)} ms, worst ${String(scrolling?.worst)} ms, ${String(scrolling?.rows)} rows rendered`,
+  );
+  if (!loaded || loaded.rows < 9000)
+    problems.push(`version-0.1: the portfolio did not load (${JSON.stringify(loaded)})`);
+  else if (loaded.ms > 3000) problems.push(`version-0.1: the portfolio took ${String(loaded.ms)} ms to show`);
+  if (scrolling && scrolling.worst > 200)
+    problems.push(`version-0.1: a scrolling frame took ${String(scrolling.worst)} ms`);
+  await shot('power-big');
+  return problems;
+}
+
 // Dragging with a real mouse (Chrome turns it into pointer events): in the drag demo, move the manually
 // scheduled "Vendor" bar (Wednesday 7 Oct 08:00) two days on. Its start must become Friday 9 Oct (snapped to
 // the day), and the bar must sit on a day boundary.
@@ -1001,10 +1145,20 @@ try {
     const message = JSON.parse(event.data);
     pending.get(message.id)?.(message);
   });
+  // Never waits forever: a request that gets no answer (a page that stopped animating, say) fails the check
+  // that made it, instead of hanging the whole run.
   const send = (method, params = {}) =>
     new Promise((done) => {
       const id = ++nextId;
-      pending.set(id, done);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        console.log(`         ! ${method} got no answer in 60 s`);
+        done({ result: { exceptionDetails: { exception: { description: `${method} timed out` } } } });
+      }, 60_000);
+      pending.set(id, (response) => {
+        clearTimeout(timer);
+        done(response);
+      });
       socket.send(JSON.stringify({ id, method, params }));
     });
 
@@ -1049,6 +1203,13 @@ try {
       problems.push(...(await dragChecks(send, id)));
       problems.push(...(await selectionChecks(send, id)));
       problems.push(...(await editingChecks(send, id)));
+      problems.push(
+        ...(await scenarioChecks(send, id, async (suffix) => {
+          const extra = await send('Page.captureScreenshot', { format: 'png' });
+          const name = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}-${suffix}.png`;
+          writeFileSync(join(OUT, name), Buffer.from(extra.result.data, 'base64'));
+        })),
+      );
       problems.push(
         ...(await menuChecks(send, id, async (suffix) => {
           const extra = await send('Page.captureScreenshot', { format: 'png' });
