@@ -95,7 +95,12 @@ const TaskRow = memo(function TaskRow({
                   onDoubleClick={(event) => {
                     event.stopPropagation(); // nor edit the name
                   }}
-                />
+                >
+                  {/* Lucide's chevron-down; the stylesheet turns it to point right while collapsed. */}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
               ) : (
                 <span className="qz-tree__spacer" />
               ))}

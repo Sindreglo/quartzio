@@ -39,6 +39,15 @@ describe('rows', () => {
     expect(rows.totalHeight).toBe(200);
   });
 
+  it('defaults to 44 px rows, and goes back to that when the option is removed', () => {
+    const gantt = createGantt({ defaultData: project });
+    expect(gantt.getState().rows.rowHeight).toBe(44);
+    expect(gantt.getState().rows.items[1]?.y).toBe(44);
+    gantt.setOptions({ rowHeight: 30 });
+    gantt.setOptions({ rowHeight: undefined });
+    expect(gantt.getState().rows.rowHeight).toBe(44);
+  });
+
   it('fills in cells in the locale and time zone', () => {
     const gantt = createGantt({ defaultData: project, locale: 'en-US' });
     const byId = new Map(gantt.getState().rows.items.map((row) => [row.id, row.cells]));

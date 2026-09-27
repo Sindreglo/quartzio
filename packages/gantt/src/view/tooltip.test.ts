@@ -21,6 +21,7 @@ const input: ProjectInput = {
 };
 const make = (extra = {}) => {
   const g = createGantt({
+    rowHeight: 36,
     defaultData: input,
     preset: 'weekAndDay',
     startDate: '2026-10-05',

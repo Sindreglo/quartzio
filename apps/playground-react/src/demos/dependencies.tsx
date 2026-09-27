@@ -108,7 +108,7 @@ const DATASETS = { types, hierarchy, outside, big };
  */
 export function DependenciesDemo() {
   const [dataset, setDataset] = useState<keyof typeof DATASETS>('types');
-  const [rowHeight, setRowHeight] = useState(36);
+  const [rowHeight, setRowHeight] = useState(44);
   const data = useMemo(() => DATASETS[dataset](), [dataset]);
 
   return (
@@ -136,7 +136,7 @@ export function DependenciesDemo() {
               setRowHeight(Number(event.target.value));
             }}
           >
-            {[28, 36, 60, 90].map((height) => (
+            {[28, 36, 44, 60, 90].map((height) => (
               <option key={height}>{height}</option>
             ))}
           </select>

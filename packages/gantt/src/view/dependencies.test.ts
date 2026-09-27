@@ -14,6 +14,7 @@ const manual = (id: string, start: number, end: number, extra: Partial<TaskInput
 });
 const gantt = (tasks: TaskInput[], dependencies: DependencyInput[], extra = {}) =>
   createGantt({
+    rowHeight: 36,
     defaultData: { settings: { timeZone: 'UTC' }, tasks, dependencies } satisfies ProjectInput,
     preset: 'weekAndDay',
     startDate: '2026-10-05',

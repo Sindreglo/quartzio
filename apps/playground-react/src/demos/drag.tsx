@@ -149,7 +149,7 @@ export function DragDemo() {
         dependencyCreate={dependencyCreate}
         validateChange={validate ? noLateStarts : undefined}
         locale="en-GB"
-        style={{ height: 360 }}
+        style={{ height: 440 }}
       />
       <p className="pg-muted">{describe(lastPatch)}</p>
     </div>

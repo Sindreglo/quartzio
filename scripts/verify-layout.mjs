@@ -31,7 +31,13 @@ const DEMOS =
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
-const VARIANTS = [{ width: 1400 }, { width: 700 }, { width: 700, classic: true }];
+// The dark pass checks the same rules with the `qz-dark` theme (and gives screenshots to look at).
+const VARIANTS = [
+  { width: 1400 },
+  { width: 700 },
+  { width: 700, classic: true },
+  { width: 1400, dark: true },
+];
 const CLASSIC_SCROLLBARS = `(() => {
   const style = document.createElement('style');
   style.textContent = '::-webkit-scrollbar { width: 14px; height: 14px; background: #eee } ::-webkit-scrollbar-thumb { background: #aaa }';
@@ -291,6 +297,9 @@ async function wheelChecks(send) {
   const evaluate = async (expression) =>
     (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
   const problems = [];
+  // Wheel events only reach what is inside the window.
+  await evaluate(`document.querySelector('.qz-gantt').scrollIntoView({ block: 'start' })`);
+  await sleep(200);
   for (const target of ['.qz-list__body', '.qz-timeline__body']) {
     const box = await evaluate(`(() => {
       const scroller = document.querySelector('.qz-gantt__scroller');
@@ -643,6 +652,7 @@ async function editingChecks(send, demo) {
   await evaluate(`(() => {
     const scroller = document.querySelector('.qz-gantt__scroller');
     scroller.scrollLeft = scroller.scrollWidth;
+    document.querySelector('.qz-gantt').scrollIntoView({ block: 'start' });
   })()`);
   await sleep(400);
   const late = await evaluate(`(() => {
@@ -733,6 +743,9 @@ async function menuChecks(send, demo, shot) {
       return r ? { x: r.left + 20, y: r.top + r.height / 2 } : null;
     })()`);
   await sleep(800);
+  // The chart at the top of the window, so there's room below the row for the menu (it would flip otherwise).
+  await evaluate(`document.querySelector('.qz-gantt').scrollIntoView({ block: 'start' })`);
+  await sleep(200);
 
   const row = await box('.qz-grid__row[data-key="s:design"]');
   await click(row.left + 40, row.top + row.height / 2, 'right');
@@ -1048,6 +1061,9 @@ async function moreDragChecks(evaluate, mouse) {
     await sleep(400);
   };
   const bar = (key) => `.qz-timeline__row[data-key="${key}"] .qz-bar`;
+  // Mouse events only reach what is inside the window.
+  await evaluate(`document.querySelector('.qz-gantt').scrollIntoView({ block: 'start' })`);
+  await sleep(200);
 
   // Progress: drag Design's handle (at 0 %) a third of the way along.
   await reveal(evaluate, 's:design');
@@ -1166,7 +1182,8 @@ try {
   mkdirSync(OUT, { recursive: true });
 
   for (const demo of DEMOS) {
-    for (const { width: viewportWidth, classic } of VARIANTS) {
+    for (const { width: viewportWidth, classic, dark } of VARIANTS) {
+      const variant = `${String(viewportWidth)}${classic ? '-classic' : ''}${dark ? '-dark' : ''}`;
       await send('Emulation.setDeviceMetricsOverride', {
         width: viewportWidth,
         height: 720,
@@ -1176,7 +1193,10 @@ try {
       const [id, option] = demo.split(':');
       // Via a blank page: navigating to the same URL with only the hash changed wouldn't reload the demo.
       await send('Page.navigate', { url: 'about:blank' });
-      await send('Page.navigate', { url: `http://localhost:${String(PORT)}/#${id}` });
+      // The theme explicitly every time: the playground remembers the last one.
+      await send('Page.navigate', {
+        url: `http://localhost:${String(PORT)}/?theme=${dark ? 'dark' : 'light'}#${id}`,
+      });
       await sleep(300);
       if (classic) await send('Runtime.evaluate', { expression: CLASSIC_SCROLLBARS });
       await sleep(2000);
@@ -1206,24 +1226,24 @@ try {
       problems.push(
         ...(await scenarioChecks(send, id, async (suffix) => {
           const extra = await send('Page.captureScreenshot', { format: 'png' });
-          const name = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}-${suffix}.png`;
+          const name = `${demo.replace(':', '-')}-${variant}-${suffix}.png`;
           writeFileSync(join(OUT, name), Buffer.from(extra.result.data, 'base64'));
         })),
       );
       problems.push(
         ...(await menuChecks(send, id, async (suffix) => {
           const extra = await send('Page.captureScreenshot', { format: 'png' });
-          const name = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}-${suffix}.png`;
+          const name = `${demo.replace(':', '-')}-${variant}-${suffix}.png`;
           writeFileSync(join(OUT, name), Buffer.from(extra.result.data, 'base64'));
         })),
       );
-      const label = `${demo.replace(':', '-')}-${String(viewportWidth)}${classic ? '-classic' : ''}`;
+      const label = `${demo.replace(':', '-')}-${variant}`;
       const file = join(OUT, `${label}.png`);
       const shot = await send('Page.captureScreenshot', { format: 'png' });
       writeFileSync(file, Buffer.from(shot.result.data, 'base64'));
       const status = problems.length === 0 ? 'ok' : 'PROBLEMS';
       console.log(
-        `${status.padEnd(8)} ${demo} @ ${String(viewportWidth)}px${classic ? ' (classic scrollbars)' : ''} → ${file}`,
+        `${status.padEnd(8)} ${demo} @ ${String(viewportWidth)}px${classic ? ' (classic scrollbars)' : ''}${dark ? ' (dark)' : ''} → ${file}`,
       );
       for (const problem of problems) console.log(`         - ${problem}`);
       if (problems.length > 0) exitCode = 1;

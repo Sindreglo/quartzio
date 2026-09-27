@@ -246,6 +246,7 @@ describe('<Gantt />', () => {
           startDate="2026-10-05"
           endDate="2026-11-02"
           locale="en-US"
+          rowHeight={36}
           {...props}
         />,
       );

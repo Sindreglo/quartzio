@@ -21,6 +21,7 @@ const input: ProjectInput = {
 };
 const make = (extra = {}) =>
   createGantt({
+    rowHeight: 36,
     defaultData: input,
     preset: 'weekAndDay',
     startDate: '2026-10-05',
@@ -86,6 +87,7 @@ describe('moving', () => {
 
   it('previews with times at a sub-day resolution', () => {
     const g = createGantt({
+      rowHeight: 36,
       defaultData: {
         settings: { timeZone: 'UTC' },
         tasks: [
@@ -129,6 +131,7 @@ describe('moving', () => {
 
   it('lets predecessors keep an automatic task later than where it was dropped', () => {
     const g = createGantt({
+      rowHeight: 36,
       defaultData: {
         settings: { timeZone: 'UTC', startDate: '2026-10-05' },
         tasks: [
@@ -164,6 +167,7 @@ describe('moving', () => {
 
   it('snaps to local midnight across a daylight saving change (Oslo)', () => {
     const g = createGantt({
+      rowHeight: 36,
       defaultData: {
         settings: { timeZone: 'Europe/Oslo', startDate: '2026-10-19' },
         tasks: [{ id: 'm', manuallyScheduled: true, startDate: '2026-10-23', duration: 1 }],

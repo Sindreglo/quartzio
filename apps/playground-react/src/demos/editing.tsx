@@ -150,7 +150,7 @@ export function EditingDemo() {
         cellEdit={cellEdit}
         validateChange={validate ? noWeekendStarts : undefined}
         locale="en-GB"
-        style={{ height: 400 }}
+        style={{ height: 480 }}
       />
       <p className="pg-muted">{describe(lastPatch)}</p>
     </div>

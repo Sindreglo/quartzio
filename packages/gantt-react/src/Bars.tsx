@@ -1,5 +1,5 @@
 import type { Bar, Interactions } from '@quartzio/gantt';
-import type { ReactElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 
 export function TaskBar({ bar }: { bar: Bar }): ReactElement {
   if (bar.kind === 'milestone') {
@@ -9,11 +9,17 @@ export function TaskBar({ bar }: { bar: Bar }): ReactElement {
       </div>
     );
   }
+  const progress = `${String(bar.progress * 100)}%`;
   return (
-    <div className={`qz-bar qz-bar--${bar.kind}`} style={{ left: bar.x, width: bar.width }} title={bar.label}>
+    <div
+      className={`qz-bar qz-bar--${bar.kind}`}
+      // --qz-progress: where the label changes color (on the progress fill and on the track).
+      style={{ left: bar.x, width: bar.width, '--qz-progress': progress } as CSSProperties}
+      title={bar.label}
+    >
       {bar.kind === 'task' && (
         <>
-          <div className="qz-bar__progress" style={{ width: `${String(bar.progress * 100)}%` }} />
+          <div className="qz-bar__progress" style={{ width: progress }} />
           <span className="qz-bar__label">{bar.label}</span>
         </>
       )}

@@ -51,7 +51,7 @@ export function TaskListDemo() {
   const gantt = useRef<GanttController>(null);
   const [dataset, setDataset] = useState<'sample' | 'big' | 'edge' | 'empty'>('sample');
   const [columnSet, setColumnSet] = useState('default');
-  const [rowHeight, setRowHeight] = useState(36);
+  const [rowHeight, setRowHeight] = useState(44);
   const [locale, setLocale] = useState('en-US');
 
   const data = useMemo<ProjectInput>(() => DATASETS[dataset](), [dataset]);
@@ -94,7 +94,7 @@ export function TaskListDemo() {
               setRowHeight(Number(event.target.value));
             }}
           >
-            {[28, 36, 48].map((height) => (
+            {[28, 36, 44, 60].map((height) => (
               <option key={height}>{height}</option>
             ))}
           </select>

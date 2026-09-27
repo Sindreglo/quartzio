@@ -22,7 +22,7 @@ const input: ProjectInput = {
 };
 const make = (extra: GanttOptions = {}) => {
   const onSelectionChange = vi.fn();
-  const g = createGantt({ defaultData: input, onSelectionChange, ...extra });
+  const g = createGantt({ rowHeight: 36, defaultData: input, onSelectionChange, ...extra });
   g.setViewport({ width: 800, height: 400 });
   return { g, onSelectionChange };
 };
@@ -250,6 +250,7 @@ describe('selection (controlled)', () => {
     let data: ProjectInput | ProjectData = input;
     const onSelectionChange = vi.fn();
     const g = createGantt({
+      rowHeight: 36,
       data: input,
       onSelectionChange,
       onChange: (change: GanttDataChange) => {

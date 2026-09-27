@@ -132,7 +132,7 @@ export interface GanttOptions {
   locale?: string | undefined;
   /** Task list columns. Defaults to name, start, end and duration. */
   columns?: readonly ColumnInput[] | undefined;
-  /** Height of a task row in pixels. Default 36. */
+  /** Height of a task row in pixels. Default 44. */
   rowHeight?: number | undefined;
   /** Height of each header row in pixels. Default 28. */
   headerRowHeight?: number | undefined;

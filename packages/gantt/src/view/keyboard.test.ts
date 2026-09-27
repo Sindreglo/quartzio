@@ -21,7 +21,7 @@ const input: ProjectInput = {
   dependencies: [{ id: 'ab', from: 'a', to: 'b' }],
 };
 const make = (extra: GanttOptions = {}) => {
-  const g = createGantt({ defaultData: input, ...extra });
+  const g = createGantt({ rowHeight: 36, defaultData: input, ...extra });
   g.setViewport({ width: 800, height: 400 });
   return g;
 };
@@ -141,7 +141,7 @@ describe('moving with the keyboard', () => {
   });
 
   it('does nothing on an empty chart or after destroy', () => {
-    const empty = createGantt({ defaultData: {} });
+    const empty = createGantt({ rowHeight: 36, defaultData: {} });
     expect(empty.keyDown({ key: 'ArrowDown' })).toBe(false);
     expect(empty.keyDown({ key: 'a', ctrl: true })).toBe(false);
     const g = make();
@@ -196,7 +196,7 @@ describe('deleting with the keyboard', () => {
     const onChange = vi.fn((change: GanttDataChange) => {
       data = change.data;
     });
-    const g = createGantt({ data: input, onChange });
+    const g = createGantt({ rowHeight: 36, data: input, onChange });
     g.select(['a']);
     press(g, 'Delete');
     expect(g.getState().project.tasks.byId.has('a')).toBe(true);

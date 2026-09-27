@@ -1,56 +1,160 @@
-/* All theming goes through --qz-* variables. Override them on .qz-gantt or any ancestor. */
-.qz-gantt {
-  --qz-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --qz-font-size: 13px;
-  --qz-color-text: #1f2328;
-  --qz-color-text-muted: #6b7280;
-  --qz-color-background: #ffffff;
-  --qz-color-border: #e5e7eb;
-  --qz-color-grid-line: #eef0f3;
-  --qz-color-header-background: #f9fafb;
-  --qz-color-row-hover: #f5f7fb;
-  /* Translucent: in the timeline it lies over the dependency lines. */
-  --qz-color-row-selected: rgb(79 91 213 / 12%);
-  --qz-color-focus: #4f5bd5;
-  /* Text on the focus color (the editor's Save button). */
-  --qz-color-on-focus: #ffffff;
-  --qz-popup-shadow: 0 6px 20px rgb(15 23 42 / 16%);
-  --qz-dialog-shadow: 0 12px 40px rgb(15 23 42 / 25%);
-  --qz-backdrop-color: rgb(15 23 42 / 30%);
-  --qz-header-font-size: 12px;
-  --qz-cell-padding: 8px;
-  --qz-tree-indent: 18px;
-  --qz-bar-color: #6d7cf0;
-  --qz-bar-progress-color: #4f5bd5;
-  --qz-bar-text-color: #ffffff;
-  --qz-bar-radius: 4px;
-  --qz-summary-color: #4b5563;
-  --qz-milestone-color: #0e9384;
-  --qz-milestone-size: 14px;
-  --qz-today-color: #ef4444;
-  --qz-nonworking-color: rgb(15 23 42 / 4%);
-  --qz-invalid-color: #dc2626;
-  --qz-tooltip-background: #1f2937;
-  --qz-tooltip-color: #ffffff;
-  --qz-dependency-color: #8b93a7;
-  --qz-dependency-width: 1.5px;
+/*
+ * Theming, in two levels:
+ *
+ * 1. Design tokens (--qz-bg, --qz-text, --qz-line, --qz-accent, --qz-primary, --qz-hue-*, …): the Quartzio design system.
+ *    Declared on :root (and :host, for shadow roots) with zero specificity, so they can be overridden on any element, and inherited from
+ *    there. Add the class `qz-dark` to the chart or any ancestor for the dark variant.
+ * 2. Component variables (--qz-bar-color, --qz-today-color, --qz-row-selected-color, …): not declared, only
+ *    read with a token as the fallback, so they follow the tokens until they are set themselves (on the chart
+ *    or any ancestor). Declaring them here would resolve them once, on the chart, and a token overridden on an
+ *    ancestor would no longer reach them.
+ *
+ * Fonts: the stacks start with Outfit and JetBrains Mono, which the app loads itself (the package loads
+ * nothing); without them the system fonts are used.
+ */
+:where(:root, :host) {
+  --qz-font-sans: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --qz-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
+  /* Surfaces */
+  --qz-bg: #f7f9fb;
+  --qz-sunken: #eef2f6;
+  --qz-raised: #ffffff;
+  --qz-field: #ffffff;
+  --qz-chip: #e8edf2;
+
+  /* Text */
+  --qz-text: #131a21;
+  --qz-text-2: #2e3a47;
+  --qz-text-muted: #52606f;
+  --qz-text-faint: #7d8a99;
+
+  /* Lines */
+  --qz-line: #dfe5eb;
+  --qz-line-subtle: #edf1f5;
+  --qz-line-strong: #cbd4de;
+  /* The chart's grid. Not --qz-line-subtle in the dark variant: that is too close to the raised surface. */
+  --qz-line-grid: #edf1f5;
+
+  /* Brand: the slate blue from the logo, for wayfinding (links, the today line). */
+  --qz-accent: #48658a;
+  --qz-on-accent: #ffffff;
+
+  /* Controls: primary buttons, checkboxes, focus, selection and linking. */
+  --qz-primary: #3e6ae1;
+  --qz-on-primary: #ffffff;
+
+  /* Inverse */
+  --qz-inverse: #131a21;
+  --qz-inverse-text: #f2f4f7;
+  --qz-inverse-muted: #a9b4c1;
+
+  /*
+   * Task hues: the same lightness and chroma for every hue. Solid for progress, markers and icons; soft for
+   * bar tracks and tag backgrounds. Text on a solid hue uses --qz-on-hue.
+   */
+  --qz-hue-sky: oklch(0.6 0.13 225);
+  --qz-hue-sky-soft: oklch(0.93 0.035 225);
+  --qz-hue-indigo: oklch(0.6 0.13 265);
+  --qz-hue-indigo-soft: oklch(0.93 0.035 265);
+  --qz-hue-violet: oklch(0.6 0.13 300);
+  --qz-hue-violet-soft: oklch(0.93 0.035 300);
+  --qz-hue-rose: oklch(0.6 0.13 15);
+  --qz-hue-rose-soft: oklch(0.93 0.035 15);
+  --qz-hue-coral: oklch(0.6 0.13 40);
+  --qz-hue-coral-soft: oklch(0.93 0.035 40);
+  --qz-hue-amber: oklch(0.6 0.13 75);
+  --qz-hue-amber-soft: oklch(0.93 0.035 75);
+  --qz-hue-green: oklch(0.6 0.13 150);
+  --qz-hue-green-soft: oklch(0.93 0.035 150);
+  --qz-hue-teal: oklch(0.6 0.13 185);
+  --qz-hue-teal-soft: oklch(0.93 0.035 185);
+  --qz-on-hue: #131a21;
+
+  /* Shape */
+  --qz-radius-xs: 4px;
+  --qz-radius-sm: 6px;
+  --qz-radius-md: 10px;
+  --qz-radius-lg: 12px;
+  --qz-radius-xl: 14px;
+  --qz-radius-2xl: 24px;
+  --qz-radius-pill: 999px;
+  --qz-elevation-0: none;
+  --qz-elevation-1: 0 30px 60px -30px rgb(19 26 33 / 14%);
+  --qz-elevation-2: 0 12px 30px -12px rgb(19 26 33 / 30%);
+  /* For native controls (inputs, date pickers, scrollbars) in the chart. */
+  --qz-color-scheme: light;
+}
+
+:where(.qz-dark) {
+  --qz-bg: #131a21;
+  --qz-sunken: #18212b;
+  --qz-raised: #1c2631;
+  --qz-field: #0f151b;
+  --qz-chip: #26323f;
+
+  --qz-text: #f2f4f7;
+  --qz-text-2: #d5dce4;
+  --qz-text-muted: #a9b4c1;
+  --qz-text-faint: #7d8a99;
+
+  --qz-line: #26303b;
+  --qz-line-subtle: #1e2731;
+  --qz-line-strong: #334050;
+  --qz-line-grid: #26303b;
+
+  --qz-accent: #88a9ce;
+  --qz-on-accent: #131a21;
+
+  --qz-primary: #7c9cf0;
+  --qz-on-primary: #131a21;
+
+  --qz-inverse: #1c2631;
+  --qz-inverse-text: #f2f4f7;
+  --qz-inverse-muted: #a9b4c1;
+
+  --qz-hue-sky: oklch(0.72 0.12 225);
+  --qz-hue-sky-soft: oklch(0.34 0.05 225);
+  --qz-hue-indigo: oklch(0.72 0.12 265);
+  --qz-hue-indigo-soft: oklch(0.34 0.05 265);
+  --qz-hue-violet: oklch(0.72 0.12 300);
+  --qz-hue-violet-soft: oklch(0.34 0.05 300);
+  --qz-hue-rose: oklch(0.72 0.12 15);
+  --qz-hue-rose-soft: oklch(0.34 0.05 15);
+  --qz-hue-coral: oklch(0.72 0.12 40);
+  --qz-hue-coral-soft: oklch(0.34 0.05 40);
+  --qz-hue-amber: oklch(0.72 0.12 75);
+  --qz-hue-amber-soft: oklch(0.34 0.05 75);
+  --qz-hue-green: oklch(0.72 0.12 150);
+  --qz-hue-green-soft: oklch(0.34 0.05 150);
+  --qz-hue-teal: oklch(0.72 0.12 185);
+  --qz-hue-teal-soft: oklch(0.34 0.05 185);
+  --qz-on-hue: #131a21;
+
+  --qz-elevation-1: 0 30px 60px -30px rgb(0 0 0 / 60%);
+  --qz-elevation-2: 0 12px 30px -12px rgb(0 0 0 / 70%);
+  --qz-color-scheme: dark;
+}
+
+.qz-gantt {
   position: relative;
   /* The scroll area, the vertical scrollbar to its right and the horizontal scrollbars below it. */
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr) auto;
   overflow: hidden;
-  font-family: var(--qz-font-family);
-  font-size: var(--qz-font-size);
-  color: var(--qz-color-text);
+  font-family: var(--qz-font-family, var(--qz-font-sans));
+  font-size: var(--qz-font-size, 13px);
+  color: var(--qz-text);
+  color-scheme: var(--qz-color-scheme);
   /* The header's background continues above the vertical scrollbar. */
   background: linear-gradient(
-    var(--qz-color-header-background) calc(var(--qz-header-height) - 1px),
-    var(--qz-color-border) 0 var(--qz-header-height),
-    var(--qz-color-background) 0
+    var(--qz-header-background, var(--qz-raised)) calc(var(--qz-header-height) - 1px),
+    var(--qz-line) 0 var(--qz-header-height),
+    var(--qz-background, var(--qz-raised)) 0
   );
-  border: 1px solid var(--qz-color-border);
+  border: 1px solid var(--qz-line);
+  border-radius: var(--qz-chart-radius, var(--qz-radius-xl));
 }
 
 /*
@@ -111,9 +215,9 @@
   left: 0;
   z-index: 3;
   overflow: hidden;
-  background: var(--qz-color-header-background);
-  border-right: 1px solid var(--qz-color-border);
-  border-bottom: 1px solid var(--qz-color-border);
+  background: var(--qz-header-background, var(--qz-raised));
+  border-right: 1px solid var(--qz-line);
+  border-bottom: 1px solid var(--qz-line);
 }
 
 .qz-timeline__header {
@@ -122,8 +226,8 @@
   z-index: 2;
   /* clip, not hidden: hidden would make the header a scroll area, and its sticky labels would stop sticking. */
   overflow: clip;
-  background: var(--qz-color-header-background);
-  border-bottom: 1px solid var(--qz-color-border);
+  background: var(--qz-header-background, var(--qz-raised));
+  border-bottom: 1px solid var(--qz-line);
 }
 
 .qz-timeline__header-canvas {
@@ -138,8 +242,8 @@
   /* Horizontal only: vertical wheel and trackpad scrolling passes through to the scroll area. */
   overflow: auto hidden;
   scrollbar-width: none;
-  background: var(--qz-color-background);
-  border-right: 1px solid var(--qz-color-border);
+  background: var(--qz-background, var(--qz-raised));
+  border-right: 1px solid var(--qz-line);
 }
 
 .qz-list__body::-webkit-scrollbar {
@@ -158,8 +262,12 @@
   overflow: clip;
   /* One vertical line per tick and one horizontal line per row. */
   background-image:
-    linear-gradient(to right, var(--qz-color-grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, transparent calc(var(--qz-row-height) - 1px), var(--qz-color-grid-line) 1px);
+    linear-gradient(to right, var(--qz-grid-line-color, var(--qz-line-grid)) 1px, transparent 1px),
+    linear-gradient(
+      to bottom,
+      transparent calc(var(--qz-row-height) - 1px),
+      var(--qz-grid-line-color, var(--qz-line-grid)) 1px
+    );
   /* Small tiles (one tick by one row): a single huge tile (e.g. 10 000 rows tall) isn't painted by Chrome. */
   background-size:
     var(--qz-tick-width) var(--qz-row-height),
@@ -194,7 +302,7 @@
   flex: none;
   width: var(--qz-list-pane, calc(var(--qz-list-width) + 1px));
   overflow: auto hidden;
-  border-right: 1px solid var(--qz-color-border);
+  border-right: 1px solid var(--qz-line);
 }
 
 .qz-timeline__scrollbar {
@@ -248,14 +356,14 @@
   /* Exactly the column width from the engine: never shrink or grow with the list's width. */
   flex: none;
   align-items: flex-end;
-  padding: 0 var(--qz-cell-padding) 6px;
+  padding: 0 var(--qz-cell-padding, 10px) 7px;
   overflow: hidden;
-  font-size: var(--qz-header-font-size);
-  font-weight: 600;
-  color: var(--qz-color-text-muted);
+  font-size: var(--qz-header-font-size, 12px);
+  font-weight: 500;
+  color: var(--qz-text-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
-  border-left: 1px solid var(--qz-color-grid-line);
+  border-left: 1px solid var(--qz-grid-line-color, var(--qz-line-grid));
 }
 
 .qz-grid__header-cell:first-child {
@@ -264,6 +372,9 @@
 
 .qz-grid__body {
   position: relative;
+  color: var(--qz-text-2);
+  /* Dates, durations and percentages line up. */
+  font-variant-numeric: tabular-nums;
 }
 
 .qz-grid__row {
@@ -272,11 +383,11 @@
   left: 0;
   display: flex;
   width: var(--qz-list-width);
-  border-bottom: 1px solid var(--qz-color-grid-line);
+  border-bottom: 1px solid var(--qz-grid-line-color, var(--qz-line-grid));
 }
 
 .qz-grid__row:hover {
-  background: var(--qz-color-row-hover);
+  background: var(--qz-row-hover-color, color-mix(in srgb, var(--qz-chip) 45%, transparent));
 }
 
 /* Selected rows, in both halves. No text selection: Shift-click selects rows. */
@@ -284,9 +395,10 @@
   user-select: none;
 }
 
+/* Translucent: in the timeline it lies over the dependency lines. */
 .qz-grid__row[aria-selected='true'],
 .qz-timeline__row--selected {
-  background: var(--qz-color-row-selected);
+  background: var(--qz-row-selected-color, color-mix(in srgb, var(--qz-primary) 12%, transparent));
 }
 
 /* The keyboard cursor, while the chart has focus (the chart itself when there's no cursor yet). */
@@ -295,11 +407,11 @@
 }
 
 .qz-gantt:focus-within .qz-grid__row--active {
-  box-shadow: inset 0 0 0 2px var(--qz-color-focus);
+  box-shadow: inset 0 0 0 2px var(--qz-focus-color, var(--qz-primary));
 }
 
 .qz-gantt:focus-visible:not(:has(.qz-grid__row--active)) {
-  outline: 2px solid var(--qz-color-focus);
+  outline: 2px solid var(--qz-focus-color, var(--qz-primary));
   outline-offset: -2px;
 }
 
@@ -308,8 +420,8 @@
   /* Exactly the column width from the engine: never shrink or grow with the list's width. */
   flex: none;
   align-items: center;
-  padding: 0 var(--qz-cell-padding);
-  border-left: 1px solid var(--qz-color-grid-line);
+  padding: 0 var(--qz-cell-padding, 10px);
+  border-left: 1px solid var(--qz-grid-line-color, var(--qz-line-grid));
 }
 
 .qz-grid__cell:first-child {
@@ -317,7 +429,13 @@
 }
 
 .qz-grid__cell--tree {
-  padding-left: calc(var(--qz-cell-padding) + var(--qz-depth) * var(--qz-tree-indent));
+  padding-left: calc(var(--qz-cell-padding, 10px) + var(--qz-depth) * var(--qz-tree-indent, 18px));
+}
+
+/* Parents' names stand out a little from their children. */
+.qz-grid__row[aria-expanded] .qz-grid__cell--tree {
+  font-weight: 500;
+  color: var(--qz-text);
 }
 
 .qz-grid__text {
@@ -345,45 +463,48 @@
   display: grid;
   place-items: center;
   padding: 0;
-  color: var(--qz-color-text-muted);
+  color: var(--qz-text-faint);
   cursor: pointer;
   background: none;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--qz-radius-xs);
 }
 
-.qz-tree__toggle::before {
-  content: '';
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentcolor;
-  transition: transform 0.1s;
+.qz-tree__toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(-90deg);
+  transition: transform 0.12s;
 }
 
-.qz-grid__row[aria-expanded='true'] .qz-tree__toggle::before {
-  transform: rotate(90deg);
+.qz-grid__row[aria-expanded='true'] .qz-tree__toggle svg {
+  transform: none;
 }
 
 .qz-tree__toggle:hover {
-  background: var(--qz-color-grid-line);
+  color: var(--qz-text);
+  background: var(--qz-chip);
 }
 
 .qz-tree__toggle:focus-visible {
-  outline: 2px solid currentcolor;
+  outline: 2px solid var(--qz-focus-color, var(--qz-primary));
 }
 
 .qz-gantt__empty {
   padding: 16px;
-  color: var(--qz-color-text-muted);
+  color: var(--qz-text-muted);
 }
 
-/* --- Timeline header --- */
+/* --- Timeline header: the time scale is data, so it is set in mono --- */
 
 .qz-header__row {
   position: relative;
-  border-bottom: 1px solid var(--qz-color-grid-line);
+  border-bottom: 1px solid var(--qz-grid-line-color, var(--qz-line-grid));
 }
 
 .qz-header__row:last-child {
@@ -397,9 +518,14 @@
   display: flex;
   align-items: center;
   height: 100%;
-  font-size: var(--qz-header-font-size);
-  color: var(--qz-color-text-muted);
-  border-left: 1px solid var(--qz-color-grid-line);
+  font-family: var(--qz-font-mono);
+  font-size: var(--qz-scale-font-size, 11px);
+  color: var(--qz-text-muted);
+  border-left: 1px solid var(--qz-grid-line-color, var(--qz-line-grid));
+}
+
+.qz-header__row:not(:last-child) .qz-header__cell {
+  color: var(--qz-text-2);
 }
 
 /*
@@ -415,7 +541,7 @@
 
 .qz-header__label {
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -470,20 +596,38 @@
   pointer-events: none;
 }
 
+/* The bar being dragged is lifted. */
+.qz-timeline__draft .qz-bar--task,
+.qz-timeline__draft .qz-bar--summary {
+  box-shadow: var(--qz-elevation-2);
+}
+
 .qz-drag-tooltip {
   position: absolute;
-  bottom: calc(100% - 2px);
-  padding: 3px 6px;
-  font-size: var(--qz-header-font-size);
-  color: var(--qz-tooltip-color);
+  bottom: calc(100% + 2px);
+  padding: 3px 8px;
+  font-family: var(--qz-font-mono);
+  font-size: 11px;
+  color: var(--qz-tooltip-color, var(--qz-inverse-text));
   white-space: nowrap;
-  background: var(--qz-tooltip-background);
-  border-radius: 4px;
+  background: var(--qz-tooltip-background, var(--qz-inverse));
+  border-radius: var(--qz-radius-xs);
+  outline: 1px solid color-mix(in srgb, var(--qz-inverse-text) 10%, transparent);
+  box-shadow: var(--qz-elevation-2);
 }
 
 /* A refused drop: the preview says so (the tooltip then shows why). */
 .qz-draft--invalid .qz-bar {
-  background: var(--qz-invalid-color);
+  background: var(--qz-invalid-color, var(--qz-hue-rose));
+}
+
+.qz-draft--invalid .qz-bar {
+  /* The whole label is on the solid color now. */
+  --qz-progress: 100%;
+}
+
+.qz-draft--invalid .qz-bar__progress {
+  display: none;
 }
 
 .qz-link-draft {
@@ -495,13 +639,21 @@
   pointer-events: none;
 }
 
+.qz-link-draft .qz-dependency {
+  stroke: var(--qz-primary);
+}
+
+.qz-link-draft .qz-dependency__arrow {
+  fill: var(--qz-primary);
+}
+
 .qz-link-draft.qz-draft--invalid .qz-dependency {
-  stroke: var(--qz-invalid-color);
+  stroke: var(--qz-invalid-color, var(--qz-hue-rose));
   stroke-dasharray: 4 3;
 }
 
 .qz-link-draft.qz-draft--invalid .qz-dependency__arrow {
-  fill: var(--qz-invalid-color);
+  fill: var(--qz-invalid-color, var(--qz-hue-rose));
 }
 
 /* Next to the pointer while drawing a dependency. */
@@ -525,8 +677,8 @@
   width: 9px;
   height: 9px;
   margin: -4.5px 0 0 -4.5px;
-  background: var(--qz-color-background);
-  border: 1.5px solid var(--qz-dependency-color);
+  background: var(--qz-raised);
+  border: 1.5px solid var(--qz-primary);
   border-radius: 50%;
 }
 
@@ -536,7 +688,7 @@
   height: 0;
   margin-left: -5px;
   border-right: 5px solid transparent;
-  border-bottom: 7px solid var(--qz-bar-progress-color);
+  border-bottom: 7px solid var(--qz-text-2);
   border-left: 5px solid transparent;
 }
 
@@ -547,7 +699,7 @@
 }
 
 .qz-drag-tooltip--below {
-  top: calc(100% - 2px);
+  top: calc(100% + 2px);
   bottom: auto;
 }
 
@@ -561,12 +713,12 @@
 
 .qz-dependency {
   fill: none;
-  stroke: var(--qz-dependency-color);
-  stroke-width: var(--qz-dependency-width);
+  stroke: var(--qz-dependency-color, var(--qz-text-faint));
+  stroke-width: var(--qz-dependency-width, 1.25px);
 }
 
 .qz-dependency__arrow {
-  fill: var(--qz-dependency-color);
+  fill: var(--qz-dependency-color, var(--qz-text-faint));
 }
 
 .qz-timeline__layer {
@@ -579,7 +731,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--qz-nonworking-color);
+  background: var(--qz-nonworking-color, color-mix(in srgb, var(--qz-text) 3.5%, transparent));
 }
 
 .qz-timeline__row {
@@ -589,6 +741,7 @@
   width: 100%;
 }
 
+/* Task bars: a soft track with the progress in the solid hue. */
 .qz-bar {
   position: absolute;
   top: 22%;
@@ -596,9 +749,9 @@
   align-items: center;
   height: 56%;
   overflow: hidden;
-  color: var(--qz-bar-text-color);
-  background: var(--qz-bar-color);
-  border-radius: var(--qz-bar-radius);
+  color: var(--qz-bar-text-color, var(--qz-text));
+  background: var(--qz-bar-color, var(--qz-hue-sky-soft));
+  border-radius: var(--qz-bar-radius, var(--qz-radius-sm));
 }
 
 .qz-bar__progress {
@@ -606,26 +759,51 @@
   top: 0;
   bottom: 0;
   left: 0;
-  background: var(--qz-bar-progress-color);
+  background: var(--qz-bar-progress-color, var(--qz-hue-sky));
 }
 
 .qz-bar__label {
   position: relative;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   overflow: hidden;
   font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/*
+ * The label spans the whole bar and is painted in two colors, split where the progress ends: one on the soft
+ * track and one on the solid progress. In the dark variant those need opposite text colors.
+ */
+.qz-bar--task .qz-bar__label {
+  flex: 1;
+  color: transparent;
+  background: linear-gradient(
+    to right,
+    var(--qz-bar-progress-text-color, var(--qz-on-hue)) var(--qz-progress, 0%),
+    var(--qz-bar-text-color, var(--qz-text)) 0
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Where backgrounds aren't painted (printing without background graphics, forced colors): plain text. */
+@media print, (forced-colors: active) {
+  .qz-bar--task .qz-bar__label {
+    color: var(--qz-bar-text-color, var(--qz-text));
+    background: none;
+  }
 }
 
 /* Summary bars: a thin bar with downward points at both ends, spanning the children. */
 /* Centered on the row's middle, where dependency lines meet it; the end caps hang below. */
 .qz-bar--summary {
-  top: calc(50% - 4px);
-  height: 7px;
+  top: calc(50% - 3px);
+  height: 6px;
   overflow: visible;
-  background: var(--qz-summary-color);
+  background: var(--qz-summary-color, var(--qz-text-muted));
   border-radius: 0;
 }
 
@@ -634,27 +812,27 @@
   content: '';
   position: absolute;
   top: 100%;
-  border-top: 6px solid var(--qz-summary-color);
+  border-top: 5px solid var(--qz-summary-color, var(--qz-text-muted));
 }
 
 .qz-bar--summary::before {
   left: 0;
-  border-right: 6px solid transparent;
+  border-right: 5px solid transparent;
 }
 
 .qz-bar--summary::after {
   right: 0;
-  border-left: 6px solid transparent;
+  border-left: 5px solid transparent;
 }
 
 /* Milestones: a diamond centered on the date, with the name beside it. */
 .qz-bar--milestone {
-  top: calc(50% - var(--qz-milestone-size) / 2);
-  width: var(--qz-milestone-size);
-  height: var(--qz-milestone-size);
-  margin-left: calc(var(--qz-milestone-size) / -2);
+  top: calc(50% - var(--qz-milestone-size, 14px) / 2);
+  width: var(--qz-milestone-size, 14px);
+  height: var(--qz-milestone-size, 14px);
+  margin-left: calc(var(--qz-milestone-size, 14px) / -2);
   overflow: visible;
-  color: var(--qz-color-text);
+  color: var(--qz-text-2);
   background: none;
 }
 
@@ -662,13 +840,14 @@
   content: '';
   position: absolute;
   inset: 2px;
-  background: var(--qz-milestone-color);
+  background: var(--qz-milestone-color, var(--qz-hue-amber));
+  border-radius: 2px;
   transform: rotate(45deg);
 }
 
 .qz-bar--milestone .qz-bar__label {
   position: absolute;
-  left: calc(var(--qz-milestone-size) + 4px);
+  left: calc(var(--qz-milestone-size, 14px) + 4px);
   padding: 0;
 }
 
@@ -679,7 +858,7 @@
   width: 2px;
   margin-left: -1px;
   pointer-events: none;
-  background: var(--qz-today-color);
+  background: var(--qz-today-color, var(--qz-accent));
 }
 
 /* --- Task tooltip (placed by the engine; shown after a short delay) --- */
@@ -689,12 +868,15 @@
   /* Its content's width (capped): positioned from the left, it would otherwise shrink to the room on the right. */
   width: max-content;
   max-width: var(--qz-tooltip-max-width, 320px);
-  padding: 6px 8px;
-  font-size: var(--qz-header-font-size);
-  color: var(--qz-tooltip-color);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--qz-tooltip-color, var(--qz-inverse-text));
   pointer-events: none;
-  background: var(--qz-tooltip-background);
-  border-radius: 4px;
+  background: var(--qz-tooltip-background, var(--qz-inverse));
+  border-radius: var(--qz-radius-sm);
+  /* Sets it off from the chart in the dark variant, where the inverse surface is the raised one. */
+  outline: 1px solid color-mix(in srgb, var(--qz-inverse-text) 10%, transparent);
+  box-shadow: var(--qz-elevation-2);
   transform: translateY(calc(-100% - 4px));
   animation: qz-tooltip-in 0.15s ease-out var(--qz-tooltip-delay, 0.4s) backwards;
 }
@@ -714,9 +896,10 @@
 }
 
 .qz-tooltip__title {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   overflow: hidden;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -724,16 +907,18 @@
 .qz-tooltip__fields {
   display: grid;
   grid-template-columns: auto auto;
-  gap: 2px 12px;
+  gap: 3px 14px;
   margin: 0;
 }
 
 .qz-tooltip__fields dt {
-  opacity: 0.7;
+  color: var(--qz-tooltip-muted-color, var(--qz-inverse-muted));
 }
 
 .qz-tooltip__fields dd {
   margin: 0;
+  font-family: var(--qz-font-mono);
+  font-size: 11px;
 }
 
 /* --- Editing a cell --- */
@@ -749,18 +934,20 @@
 .qz-cell-editor {
   flex: 1;
   min-width: 0;
-  height: calc(100% - 6px);
-  padding: 0 4px;
+  height: calc(100% - 8px);
+  padding: 0 6px;
   font: inherit;
-  color: var(--qz-color-text);
-  background: var(--qz-color-background);
-  border: 1px solid var(--qz-color-focus);
-  border-radius: 3px;
+  color: var(--qz-text);
+  background: var(--qz-field);
+  border: 1px solid var(--qz-focus-color, var(--qz-primary));
+  border-radius: var(--qz-radius-xs);
   outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qz-focus-color, var(--qz-primary)) 18%, transparent);
 }
 
 .qz-cell-editor--invalid {
-  border-color: var(--qz-invalid-color);
+  border-color: var(--qz-invalid-color, var(--qz-hue-rose));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qz-invalid-color, var(--qz-hue-rose)) 18%, transparent);
 }
 
 .qz-cell-editor__error {
@@ -770,12 +957,13 @@
   right: 2px;
   left: 2px;
   z-index: 3;
-  padding: 3px 6px;
-  font-size: var(--qz-header-font-size);
-  color: #ffffff;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--qz-on-hue);
   text-align: start;
-  background: var(--qz-invalid-color);
-  border-radius: 4px;
+  background: var(--qz-invalid-color, var(--qz-hue-rose));
+  border-radius: var(--qz-radius-xs);
+  box-shadow: var(--qz-elevation-2);
 }
 
 /* --- Context menu (a popover: fixed, in the top layer) --- */
@@ -783,28 +971,28 @@
   position: fixed;
   inset: auto;
   z-index: 10;
-  min-width: 180px;
-  padding: 4px 0;
+  min-width: 190px;
+  padding: 4px;
   margin: 0;
   overflow: visible;
-  font-family: var(--qz-font-family);
-  font-size: var(--qz-font-size);
-  color: var(--qz-color-text);
-  background: var(--qz-color-background);
-  border: 1px solid var(--qz-color-border);
-  border-radius: 6px;
+  font-family: var(--qz-font-family, var(--qz-font-sans));
+  font-size: var(--qz-font-size, 13px);
+  color: var(--qz-text);
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line);
+  border-radius: var(--qz-radius-md);
   outline: none;
-  box-shadow: var(--qz-popup-shadow);
+  box-shadow: var(--qz-elevation-2);
 }
 
 .qz-menu--sub {
   position: absolute;
   top: -5px;
-  left: calc(100% - 4px);
+  left: calc(100% - 2px);
 }
 
 .qz-menu--sub.qz-menu--left {
-  right: calc(100% - 4px);
+  right: calc(100% - 2px);
   left: auto;
 }
 
@@ -817,23 +1005,24 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  padding: 5px 12px 5px 6px;
+  padding: 6px 12px 6px 6px;
   white-space: nowrap;
   cursor: default;
   user-select: none;
+  border-radius: var(--qz-radius-sm);
 }
 
 .qz-menu__item--active {
-  background: var(--qz-color-row-selected);
+  background: var(--qz-chip);
 }
 
 .qz-menu__item[aria-disabled='true'] {
-  color: var(--qz-color-text-muted);
-  opacity: 0.6;
+  color: var(--qz-text-faint);
 }
 
 .qz-menu__check {
   width: 14px;
+  color: var(--qz-primary);
   text-align: center;
 }
 
@@ -842,13 +1031,13 @@
 }
 
 .qz-menu__arrow {
-  color: var(--qz-color-text-muted);
+  color: var(--qz-text-faint);
 }
 
 .qz-menu__separator {
   height: 1px;
-  margin: 4px 0;
-  background: var(--qz-color-border);
+  margin: 4px 6px;
+  background: var(--qz-line);
 }
 
 /* The submenu hangs off its item. */
@@ -858,68 +1047,61 @@
 
 /* --- Task editor (a modal dialog) --- */
 .qz-task-editor {
-  width: min(520px, calc(100vw - 32px));
+  width: min(540px, calc(100vw - 32px));
   padding: 0;
-  font-family: var(--qz-font-family);
-  font-size: var(--qz-font-size);
-  color: var(--qz-color-text);
-  background: var(--qz-color-background);
-  border: 1px solid var(--qz-color-border);
-  border-radius: 8px;
-  box-shadow: var(--qz-dialog-shadow);
+  font-family: var(--qz-font-family, var(--qz-font-sans));
+  font-size: var(--qz-font-size, 13px);
+  color: var(--qz-text);
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line);
+  border-radius: var(--qz-radius-xl);
+  box-shadow: var(--qz-dialog-shadow, var(--qz-elevation-2));
 }
 
 .qz-task-editor::backdrop {
-  background: var(--qz-backdrop-color, rgb(15 23 42 / 30%));
+  background: var(--qz-backdrop-color, rgb(19 26 33 / 35%));
 }
 
 .qz-task-editor__form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 16px;
+  padding: 24px;
 }
 
 .qz-task-editor__title {
   margin: 0;
   overflow: hidden;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+/* Tabs as a segmented control: the active one on a chip. */
 .qz-task-editor__tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--qz-color-border);
-}
-
-.qz-task-editor__tab {
-  padding: 6px 10px;
-  font: inherit;
-  color: var(--qz-color-text-muted);
-  cursor: pointer;
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-}
-
-.qz-task-editor__tab[aria-selected='true'] {
-  color: var(--qz-color-text);
-  border-bottom-color: var(--qz-color-focus);
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid var(--qz-line-subtle);
+  border-radius: 8px;
 }
 
 .qz-task-editor__panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 220px;
 }
 
 .qz-task-editor__row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .qz-task-editor__row > * {
@@ -930,47 +1112,59 @@
 .qz-task-editor__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .qz-task-editor__field > label,
 .qz-task-editor__field > span:first-child {
-  font-size: var(--qz-header-font-size);
-  color: var(--qz-color-text-muted);
+  font-size: 12px;
+  color: var(--qz-text-muted);
 }
 
 .qz-task-editor input,
 .qz-task-editor select {
   min-width: 0;
-  padding: 5px 6px;
+  height: 34px;
+  padding: 0 10px;
   font: inherit;
-  color: var(--qz-color-text);
-  background: var(--qz-color-background);
-  border: 1px solid var(--qz-color-border);
-  border-radius: 4px;
+  color: var(--qz-text);
+  background: var(--qz-field);
+  border: 1px solid var(--qz-line-strong);
+  border-radius: var(--qz-radius-sm);
+}
+
+.qz-task-editor input:focus-visible,
+.qz-task-editor select:focus-visible {
+  border-color: var(--qz-focus-color, var(--qz-primary));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qz-focus-color, var(--qz-primary)) 18%, transparent);
 }
 
 .qz-task-editor input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
   padding: 0;
+  accent-color: var(--qz-primary);
 }
 
 .qz-task-editor input[aria-invalid='true'] {
-  border-color: var(--qz-invalid-color);
+  border-color: var(--qz-invalid-color, var(--qz-hue-rose));
 }
 
 .qz-task-editor input:disabled {
-  color: var(--qz-color-text-muted);
-  background: var(--qz-color-header-background);
+  color: var(--qz-text-faint);
+  background: var(--qz-sunken);
+  border-color: var(--qz-line);
 }
 
 .qz-task-editor__check {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 
 .qz-task-editor__row > .qz-task-editor__lag {
-  flex: 0 0 70px;
+  flex: 0 0 76px;
 }
 
 .qz-task-editor__row > button {
@@ -991,13 +1185,13 @@
 .qz-task-editor__field-error,
 .qz-task-editor__error {
   margin: 0;
-  font-size: var(--qz-header-font-size);
-  color: var(--qz-invalid-color);
+  font-size: 12px;
+  color: var(--qz-invalid-text-color, var(--qz-hue-rose));
 }
 
 .qz-task-editor__empty {
   margin: 0;
-  color: var(--qz-color-text-muted);
+  color: var(--qz-text-muted);
 }
 
 .qz-task-editor__buttons {
@@ -1006,27 +1200,56 @@
   justify-content: flex-end;
 }
 
+/* Buttons: secondary (raised with a strong line) by default, pill-shaped. */
 .qz-task-editor button {
-  padding: 5px 12px;
+  height: 34px;
+  padding: 0 16px;
   font: inherit;
+  font-weight: 500;
+  color: var(--qz-text);
   cursor: pointer;
-  background: var(--qz-color-background);
-  border: 1px solid var(--qz-color-border);
-  border-radius: 4px;
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line-strong);
+  border-radius: var(--qz-radius-pill);
+}
+
+.qz-task-editor button:hover {
+  background: var(--qz-sunken);
+}
+
+.qz-task-editor button:focus-visible {
+  outline: 2px solid var(--qz-focus-color, var(--qz-primary));
+  outline-offset: 2px;
 }
 
 .qz-task-editor .qz-task-editor__tab {
+  height: auto;
+  padding: 6px 12px;
+  font-weight: 400;
+  color: var(--qz-text-muted);
+  white-space: nowrap;
+  background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
+  border-radius: var(--qz-radius-sm);
+}
+
+.qz-task-editor .qz-task-editor__tab:hover {
+  color: var(--qz-text);
+  background: none;
 }
 
 .qz-task-editor .qz-task-editor__tab[aria-selected='true'] {
-  border-bottom-color: var(--qz-color-focus);
+  color: var(--qz-text);
+  background: var(--qz-chip);
 }
 
+/* The primary button. */
 .qz-task-editor .qz-task-editor__save {
-  color: var(--qz-color-on-focus);
-  background: var(--qz-color-focus);
-  border-color: var(--qz-color-focus);
+  color: var(--qz-on-primary);
+  background: var(--qz-primary);
+  border-color: var(--qz-primary);
+}
+
+.qz-task-editor .qz-task-editor__save:hover {
+  background: color-mix(in srgb, var(--qz-primary) 88%, var(--qz-text));
 }

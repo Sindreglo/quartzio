@@ -22,7 +22,7 @@ const input: ProjectInput = {
   dependencies: [{ id: 'ab', from: 'a', to: 'b' }],
 };
 const make = (extra: GanttOptions = {}) => {
-  const g = createGantt({ defaultData: input, locale: 'en-US', ...extra });
+  const g = createGantt({ rowHeight: 36, defaultData: input, locale: 'en-US', ...extra });
   g.setViewport({ width: 800, height: 400 });
   return g;
 };
@@ -226,6 +226,7 @@ describe('what the task menu does', () => {
   it('selects and opens the new task once the data comes back in controlled mode', () => {
     let data: ProjectInput | ProjectData = input;
     const g = createGantt({
+      rowHeight: 36,
       data: input,
       onChange: (change: GanttDataChange) => {
         data = change.data;
@@ -272,6 +273,7 @@ describe('what the task menu does', () => {
   it('forgets a new task the app did not take', () => {
     let data: ProjectInput | ProjectData = input;
     const g = createGantt({
+      rowHeight: 36,
       data: input,
       onChange: (change: GanttDataChange) => {
         data = change.data;

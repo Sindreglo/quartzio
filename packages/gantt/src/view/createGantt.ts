@@ -78,7 +78,7 @@ export type {
 } from './types';
 
 const INITIAL_VIEWPORT: Viewport = { width: 0, height: 0, scrollLeft: 0, scrollTop: 0 };
-const DEFAULT_ROW_HEIGHT = 36;
+const DEFAULT_ROW_HEIGHT = 44;
 const DEFAULT_HEADER_ROW_HEIGHT = 28;
 /** Where a menu opened with the keyboard goes, from the left edge of the chart. */
 const KEYBOARD_MENU_X = 24;

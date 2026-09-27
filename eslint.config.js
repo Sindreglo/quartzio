@@ -56,7 +56,7 @@ const layerRules = (layer, index, isTest) => {
 };
 
 export default defineConfig(
-  globalIgnores(['**/dist/', '**/coverage/', '**/.turbo/']),
+  globalIgnores(['**/dist/', '**/coverage/', '**/.turbo/', 'design/']),
 
   js.configs.recommended,
 
