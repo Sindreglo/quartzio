@@ -5,5 +5,11 @@
   "fixed": [["@quartzio/*"]],
   "updateInternalDependencies": "patch",
   "commit": false,
-  "changelog": "@changesets/cli/changelog"
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "Sindreglo/quartzio"
+    }
+  ],
+  "changedFilePatterns": ["src/**", "!src/**/*.test.{ts,tsx}", "package.json", "README.md"]
 }

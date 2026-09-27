@@ -4,6 +4,15 @@
   "description": "Headless, framework-agnostic Gantt chart engine",
   "license": "MIT",
   "author": "Sindre Glomnes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sindreglo/quartzio.git",
+    "directory": "packages/gantt"
+  },
+  "homepage": "https://github.com/Sindreglo/quartzio#readme",
+  "bugs": {
+    "url": "https://github.com/Sindreglo/quartzio/issues"
+  },
   "keywords": [
     "gantt",
     "gantt-chart",

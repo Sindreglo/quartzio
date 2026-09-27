@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One release at a time, and never cancelled halfway through publishing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Version pull request or publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # the version branch, git tags and GitHub releases
+      pull-requests: write # the "version packages" pull request
+      id-token: write # npm trusted publishing (OIDC): no npm token, and provenance for the packages
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # With pending changesets: opens or updates the version pull request. Once that is merged (no changesets
+      # left): publishes what isn't on npm yet, tags it and creates GitHub releases.
+      - uses: changesets/action@v2
+        with:
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          # Conventional Commits, like every other commit on main.
+          commit-message: 'chore: version packages'
+          pr-title: 'chore: version packages'

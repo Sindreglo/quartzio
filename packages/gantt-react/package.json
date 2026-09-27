@@ -4,6 +4,15 @@
   "description": "React Gantt chart component built on @quartzio/gantt",
   "license": "MIT",
   "author": "Sindre Glomnes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sindreglo/quartzio.git",
+    "directory": "packages/gantt-react"
+  },
+  "homepage": "https://github.com/Sindreglo/quartzio#readme",
+  "bugs": {
+    "url": "https://github.com/Sindreglo/quartzio/issues"
+  },
   "keywords": [
     "gantt",
     "gantt-chart",

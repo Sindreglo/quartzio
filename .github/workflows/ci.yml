@@ -55,3 +55,45 @@ jobs:
           name: layout-screenshots
           path: .layout/
           retention-days: 14
+
+  # Wall-clock logic (midnight, working hours, week start) must not depend on the machine's zone; the check job
+  # runs in UTC. Northern and southern daylight saving time, a zone where midnight is skipped, and one far from UTC.
+  time-zones:
+    name: Tests (TZ=${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [Europe/Oslo, America/Los_Angeles, Australia/Sydney, Africa/Cairo, Pacific/Kiritimati]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter './packages/*' test
+        env:
+          TZ: ${{ matrix.tz }}
+
+  changeset:
+    name: Changeset
+    # The version pull request uses up the changesets, so it has none of its own.
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Fails when a published package changed without a changeset. A change users won't notice gets an empty
+      # one: `pnpm changeset --empty`.
+      - run: pnpm changeset status --since=origin/${{ github.base_ref }}
