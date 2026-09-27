@@ -976,6 +976,8 @@ const chrome = spawn(
     `--remote-debugging-port=${String(DEBUG_PORT)}`,
     `--user-data-dir=${profile}`,
     '--no-first-run',
+    // On CI (Ubuntu 24.04 runners), AppArmor blocks Chrome's sandbox; the machine is thrown away anyway.
+    ...(process.env.CI ? ['--no-sandbox'] : []),
     'about:blank',
   ],
   { stdio: 'ignore' },
