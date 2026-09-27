@@ -8,6 +8,7 @@ coverage/
 .layout/
 
 # Lokale notater og AI-oppsett
+design/
 .claude/
 CLAUDE.md
 docs/

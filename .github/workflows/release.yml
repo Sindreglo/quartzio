@@ -32,6 +32,10 @@ jobs:
       # With pending changesets: opens or updates the version pull request. Once that is merged (no changesets
       # left): publishes what isn't on npm yet, tags it and creates GitHub releases.
       - uses: changesets/action@v2
+        env:
+          # For the version script: @changesets/changelog-github looks up pull requests and authors with it. The action
+          # takes its own token as an input and doesn't pass it on (this is the same token, so they don't conflict).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version-script: pnpm version-packages
           publish-script: pnpm release
