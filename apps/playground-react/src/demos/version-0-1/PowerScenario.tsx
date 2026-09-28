@@ -83,8 +83,6 @@ export function PowerScenario() {
   const history = useHistory(ref);
   const project = useGanttState(ref, pickProject, null);
   const nextId = useRef(1);
-  // The first change after loading a plan is the scheduling writing its dates back, not an edit.
-  const scheduling = useRef(true);
 
   const packageOf = (id: Id) => packages.get(id);
   const nameOf = (id: Id) => project?.tasks.byId.get(id)?.name ?? String(id);
@@ -130,10 +128,11 @@ export function PowerScenario() {
       for (const id of added) if (!next.has(id)) next.set(id, { code: 'new', owner: 'Unassigned', cost: 0 });
       return { data: change.data, packages: next };
     });
-    const line = scheduling.current
-      ? `Scheduled on load: ${String(change.patch.operations.length)} computed dates written back`
-      : describe(change, nameOf);
-    scheduling.current = false;
+    // Loading a plan writes the scheduled dates back: reported like an edit, but it isn't one.
+    const line =
+      change.source === 'load'
+        ? `Scheduled on load: ${String(change.patch.operations.length)} computed dates written back`
+        : `${change.source === 'edit' ? '' : `${change.source === 'undo' ? 'Undo' : 'Redo'}: `}${describe(change, nameOf)}`;
     setLog((entries) => [line, ...entries].slice(0, 8));
   };
 
@@ -275,7 +274,6 @@ export function PowerScenario() {
             onChange={(event) => {
               const buildings = Number(event.target.value);
               setScale(buildings);
-              scheduling.current = true;
               setModel(load(buildings));
               setLog([]);
               setStatus('');

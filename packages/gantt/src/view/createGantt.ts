@@ -52,6 +52,7 @@ import {
 } from './menu';
 import { addTask, indent, outdent, type AddWhere } from './taskActions';
 import { createTaskEditor } from './taskEditor';
+import { createListWidth, toListWidth } from './listWidth';
 import { VIEW_PRESETS } from '../timeaxis/presets';
 import type { Transaction } from '../data/transaction';
 
@@ -215,7 +216,8 @@ type CallbackOption =
   | 'taskMenuItems'
   | 'timeAxisMenuItems'
   | 'createTaskId'
-  | 'onPresetChange';
+  | 'onPresetChange'
+  | 'onListWidthChange';
 
 function toCallback<K extends CallbackOption>(value: unknown, name: K): GanttOptions[K] {
   if (value === undefined || value === null) return undefined;
@@ -239,6 +241,7 @@ interface Behaviour {
   timeAxisMenuItems: GanttOptions['timeAxisMenuItems'];
   createTaskId: GanttOptions['createTaskId'];
   onPresetChange: GanttOptions['onPresetChange'];
+  onListWidthChange: GanttOptions['onListWidthChange'];
 }
 
 function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviour {
@@ -278,6 +281,9 @@ function resolveBehaviour(options: GanttOptions, previous?: Behaviour): Behaviou
     onPresetChange: has('onPresetChange')
       ? toCallback(options.onPresetChange, 'onPresetChange')
       : previous?.onPresetChange,
+    onListWidthChange: has('onListWidthChange')
+      ? toCallback(options.onListWidthChange, 'onListWidthChange')
+      : previous?.onListWidthChange,
   };
 }
 
@@ -331,6 +337,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   // A zoom overrides the preset option until the option changes (compared by value).
   let zoomed = false;
   let presetOption: unknown = options.preset;
+  const listWidth = createListWidth(toListWidth(options.listWidth), view.columns.state.totalWidth);
   // A task just added from the menu: selected, shown and opened for editing once it's in the data.
   let added: Id | null = null;
   let reveal: Id | null = null;
@@ -437,6 +444,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       menu,
       taskEditor: taskEditor.current(editorView),
       scrollTo,
+      list: listWidth.state(),
     };
     interactionView = {
       project: projectState,
@@ -735,6 +743,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       const effective = keepZoom ? withoutPreset : next;
       const nextView = VIEW_KEYS.some((key) => key in effective) ? resolveViewOptions(effective, view) : view;
       const nextBehaviour = resolveBehaviour(next, behaviour);
+      const nextListWidth = 'listWidth' in next ? toListWidth(next.listWidth) : undefined;
       const before = project.getState();
 
       const previousView = view;
@@ -760,6 +769,9 @@ export function createGantt(options: GanttOptions = {}): GanttController {
       }
       if (menu && !(menu.kind === 'task' ? behaviour.taskMenu : behaviour.timeAxisMenu)) menu = null;
       if (!behaviour.undoRedo) history.clear();
+      if (nextListWidth !== undefined) listWidth.setOption(nextListWidth);
+      if (nextView.columns !== previousView.columns)
+        listWidth.setColumnsWidth(nextView.columns.state.totalWidth);
       // Recomputed from scratch: the texts depend on the options (locale, columns).
       if (!sameView(nextView, previousView)) tooltip = null;
       if (!behaviour.multiSelect && selection.ids.length > 1) {
@@ -774,6 +786,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         (state.tooltip !== null && !behaviour.taskTooltip) ||
         (state.editing !== null && !behaviour.cellEdit) ||
         state.menu !== menu ||
+        state.list !== listWidth.state() ||
         (state.taskEditor !== null && !behaviour.taskEdit)
       ) {
         refresh();
@@ -1068,6 +1081,22 @@ export function createGantt(options: GanttOptions = {}): GanttController {
         setState({ ...state, scrollTo });
       }
       behaviour.onPresetChange?.(next.id);
+      return true;
+    },
+
+    resizeList(action) {
+      if (destroyed) return false;
+      const result = listWidth.act(action);
+      if (!result.used) return false;
+      if (listWidth.state().resizing) {
+        // Nothing else shows while the divider moves.
+        menu = null;
+        hoverPoint = null;
+        tooltip = null;
+      }
+      if (state.list !== listWidth.state() || state.menu !== menu || state.tooltip !== tooltip)
+        setState({ ...state, list: listWidth.state(), menu, tooltip });
+      if (result.changed !== undefined) behaviour.onListWidthChange?.(result.changed);
       return true;
     },
 

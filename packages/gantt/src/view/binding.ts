@@ -65,7 +65,7 @@ export function createDataBinding(
   const reportLoaded = (patch: Patch): void => {
     const data = toProjectData(project.getState());
     if (controlled) pending = { state: project.getState(), data, operations: [], actions: [] };
-    report({ patch, data });
+    report({ patch, data, source: 'load' });
   };
 
   let started = false;
@@ -80,11 +80,12 @@ export function createDataBinding(
       const previous = chaining ? pending : undefined;
       const planned = plan(previous?.state);
       if (!planned) return null;
+      const done = action(planned.patch);
       pending = {
         state: planned.state,
         data: toProjectData(planned.state),
         operations: [...(previous?.operations ?? []), ...planned.patch.operations],
-        actions: [...(previous?.actions ?? []), action(planned.patch)],
+        actions: [...(previous?.actions ?? []), done],
       };
       if (!chaining) {
         chaining = true;
@@ -92,13 +93,14 @@ export function createDataBinding(
           chaining = false;
         });
       }
-      report({ patch: planned.patch, data: pending.data });
+      report({ patch: planned.patch, data: pending.data, source: done.type });
       return planned.patch;
     }
     const patch = apply();
     if (patch) {
-      history.confirm([action(patch)]);
-      report({ patch, data: project.toData() });
+      const done = action(patch);
+      history.confirm([done]);
+      report({ patch, data: project.toData(), source: done.type });
     }
     return patch;
   };

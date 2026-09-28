@@ -581,12 +581,12 @@ describe('<Gantt />', () => {
       expect(rows(container)[0]?.getAttribute('aria-selected')).toBe('false');
     });
 
-    it('has one tab stop: the scroll areas are not tab stops', () => {
+    it('has one tab stop, plus the divider: the scroll areas are not tab stops', () => {
       const { container } = render(<Gantt defaultData={tasks} />);
       const stops = [...container.querySelectorAll<HTMLElement>('[tabindex]')].filter(
         (el) => el.tabIndex >= 0,
       );
-      expect(stops).toEqual([root(container)]);
+      expect(stops).toEqual([root(container), container.querySelector('.qz-divider')]);
       for (const selector of [
         '.qz-gantt__scroller',
         '.qz-list__body',
@@ -959,6 +959,86 @@ describe('<Gantt />', () => {
         ref.current?.openTaskEditor('a');
       });
       expect(document.querySelector('dialog .custom')?.textContent).toBe('Alpha');
+    });
+  });
+  describe('the divider', () => {
+    const data: ProjectInput = { tasks: [{ id: 'a', name: 'A' }] };
+    // happy-dom does no layout: give the chart a width, so the divider has bounds to work in.
+    const renderChart = (props = {}) => {
+      const onListWidthChange = vi.fn();
+      const result = render(<Gantt defaultData={data} onListWidthChange={onListWidthChange} {...props} />);
+      const chart = result.container.firstElementChild as HTMLElement;
+      Object.defineProperty(chart, 'clientWidth', { value: 1200 });
+      const divider = result.container.querySelector<HTMLElement>('.qz-divider') as HTMLElement;
+      return { ...result, chart, divider, onListWidthChange };
+    };
+    const pointer = { pointerId: 1, button: 0, isPrimary: true };
+
+    it('is a vertical separator with the bounds from the engine', () => {
+      const { divider } = renderChart();
+      expect(divider.getAttribute('role')).toBe('separator');
+      expect(divider.getAttribute('aria-orientation')).toBe('vertical');
+      expect(divider.getAttribute('aria-valuemin')).toBe('80');
+      expect(divider.getAttribute('aria-valuemax')).toBe('581');
+    });
+
+    it('sends a drag to the engine and sets the width it gives', () => {
+      const { chart, divider, onListWidthChange } = renderChart();
+      fireEvent.pointerDown(divider, { ...pointer, clientX: 300 });
+      expect(divider.classList.contains('qz-divider--resizing')).toBe(true);
+      fireEvent.pointerMove(divider, { ...pointer, clientX: 400 });
+      fireEvent.pointerUp(divider, { ...pointer, clientX: 400 });
+      // The measured pane is 0 in happy-dom: 0 + 100 px.
+      expect(chart.style.getPropertyValue('--qz-list-set-width')).toBe('100px');
+      expect(onListWidthChange).toHaveBeenCalledExactlyOnceWith(100);
+    });
+
+    it('drops a drag on Escape, and keeps the key from the chart', () => {
+      const { chart, divider, onListWidthChange } = renderChart({ listWidth: 300 });
+      fireEvent.pointerDown(divider, { ...pointer, clientX: 300 });
+      fireEvent.pointerMove(divider, { ...pointer, clientX: 400 });
+      fireEvent.keyDown(chart, { key: 'Escape' });
+      expect(chart.style.getPropertyValue('--qz-list-set-width')).toBe('300px');
+      fireEvent.pointerUp(divider, { ...pointer, clientX: 400 });
+      expect(onListWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('drops an interrupted drag, and ends one that lost the pointer', () => {
+      const { chart, divider, onListWidthChange } = renderChart({ listWidth: 300 });
+      fireEvent.pointerDown(divider, { ...pointer, clientX: 300 });
+      fireEvent.pointerMove(divider, { ...pointer, clientX: 400 });
+      fireEvent.pointerCancel(divider, pointer);
+      expect(chart.style.getPropertyValue('--qz-list-set-width')).toBe('300px');
+      expect(divider.classList.contains('qz-divider--resizing')).toBe(false);
+      fireEvent.pointerDown(divider, { ...pointer, clientX: 300 });
+      fireEvent.pointerMove(divider, { ...pointer, clientX: 350 });
+      fireEvent(divider, new Event('lostpointercapture', { bubbles: true }));
+      expect(divider.classList.contains('qz-divider--resizing')).toBe(false);
+      // From the measured 0 px (happy-dom): 50 px, kept at the minimum.
+      expect(onListWidthChange).toHaveBeenCalledExactlyOnceWith(80);
+    });
+
+    it('lets shortcuts through to the chart', () => {
+      const onChange = vi.fn();
+      const { divider } = renderChart({ onChange });
+      fireEvent.keyDown(divider, { key: 'z', code: 'KeyZ', ctrlKey: true });
+      expect(onChange).not.toHaveBeenCalled(); // nothing to undo, but it reached the chart without error
+      fireEvent.keyDown(divider, { key: 'a', code: 'KeyA', ctrlKey: true });
+      expect((divider.parentElement as HTMLElement).querySelectorAll('[aria-selected="true"]')).toHaveLength(
+        1,
+      );
+    });
+
+    it('moves with the arrow keys without moving the row cursor, and resets on double-click', () => {
+      const onSelectionChange = vi.fn();
+      const { chart, divider, onListWidthChange } = renderChart({ listWidth: 300, onSelectionChange });
+      fireEvent.keyDown(divider, { key: 'ArrowDown' });
+      fireEvent.keyDown(divider, { key: 'ArrowRight' });
+      expect(onSelectionChange).not.toHaveBeenCalled();
+      expect(onListWidthChange).toHaveBeenCalledOnce();
+      fireEvent.doubleClick(divider);
+      expect(chart.style.getPropertyValue('--qz-list-set-width')).toBe('');
+      expect(onListWidthChange).toHaveBeenLastCalledWith(null);
     });
   });
 });

@@ -122,9 +122,11 @@ export type {
 } from './view/taskEditor';
 export type { TaskTooltip } from './view/tooltip';
 export type { KeyInput } from './view/keyboard';
+export type { ListPaneState, ListResizeAction } from './view/listWidth';
 export type { Row, RowsState } from './view/rows';
 export type { KeyModifiers } from './view/selection';
 export type {
+  GanttChangeSource,
   GanttController,
   GanttDataChange,
   GanttOptions,

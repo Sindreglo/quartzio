@@ -1,7 +1,9 @@
 import {
   applyPatch,
   createProject,
+  type GanttChangeSource,
   type GanttController,
+  type GanttDataChange,
   getTreeIndex,
   type Id,
   type Patch,
@@ -26,6 +28,7 @@ export function DataModelDemo() {
   const [undoStack, setUndoStack] = useState<Patch[]>([]);
   const [redoStack, setRedoStack] = useState<Patch[]>([]);
   const [lastPatch, setLastPatch] = useState<Patch | null>(null);
+  const [lastSource, setLastSource] = useState<GanttChangeSource | 'app' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const tree = useMemo(
@@ -51,9 +54,12 @@ export function DataModelDemo() {
     }
   };
 
-  const handleChange = ({ patch, data: next }: { patch: Patch; data: ProjectData }) => {
+  const handleChange = ({ patch, data: next, source }: GanttDataChange) => {
     setData(next);
     setLastPatch(patch);
+    setLastSource(source);
+    // The scheduling of loaded data is not something to undo.
+    if (source === 'load') return;
     setUndoStack((stack) => [...stack, patch]);
     setRedoStack([]);
   };
@@ -63,6 +69,7 @@ export function DataModelDemo() {
     if (!patch) return;
     setData(applyPatch(data, invert(patch)));
     setLastPatch(invert(patch));
+    setLastSource('app'); // this demo's own undo: the app applies the patch, the chart just gets new data
     setUndoStack(undoStack.slice(0, -1));
     setRedoStack([...redoStack, patch]);
   };
@@ -72,6 +79,7 @@ export function DataModelDemo() {
     if (!patch) return;
     setData(applyPatch(data, patch));
     setLastPatch(patch);
+    setLastSource('app');
     setRedoStack(redoStack.slice(0, -1));
     setUndoStack([...undoStack, patch]);
   };
@@ -192,7 +200,7 @@ export function DataModelDemo() {
         </section>
 
         <section className="pg-panel">
-          <h3>Last patch</h3>
+          <h3>Last patch{lastSource && <span className="pg-muted"> · source: {lastSource}</span>}</h3>
           <pre className="pg-code">
             {lastPatch ? JSON.stringify(lastPatch, null, 2) : 'Make an edit to see its patch.'}
           </pre>

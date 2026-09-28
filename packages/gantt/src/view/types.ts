@@ -10,6 +10,7 @@ import type { CellEdit } from './editing';
 import type { MenuCustomizer, MenuState, MenuTarget } from './menu';
 import type { TaskEditorAction, TaskEditorState } from './taskEditor';
 import type { KeyInput } from './keyboard';
+import type { ListPaneState, ListResizeAction } from './listWidth';
 import type { TimeSpan } from './nonWorking';
 import type { RowsState } from './rows';
 import type { KeyModifiers } from './selection';
@@ -76,6 +77,8 @@ export interface ViewState {
    * scroll when it changes.
    */
   readonly scrollTo: ScrollRequest | null;
+  /** The task list's width, set with the divider between it and the timeline. */
+  readonly list: ListPaneState;
 }
 
 export interface ScrollRequest {
@@ -98,10 +101,19 @@ export interface TodayLine {
   readonly x: number;
 }
 
+/**
+ * Where a data change comes from: `'load'` is scheduling written back into data that was loaded (the initial
+ * data, or other data passed in), `'edit'` any edit (in the chart, or `transact`), `'undo'` and `'redo'` the
+ * history.
+ */
+export type GanttChangeSource = 'load' | 'edit' | 'undo' | 'redo';
+
 export interface GanttDataChange {
   readonly patch: Patch;
   /** The project data with the change applied. */
   readonly data: ProjectData;
+  /** Where the change comes from, e.g. to not mark a plan as unsaved for `'load'`. */
+  readonly source: GanttChangeSource;
 }
 
 export interface GanttOptions {
@@ -188,6 +200,13 @@ export interface GanttOptions {
   createTaskId?: (() => Id) | undefined;
   /** Called with the preset's id after zooming (a zoom lasts until the `preset` option changes). */
   onPresetChange?: ((presetId: string) => void) | undefined;
+  /**
+   * Width of the task list in pixels (its pane, border included), or `null` for automatic: as wide as the
+   * columns, up to `--qz-list-max-width`. Dragging the divider overrides it until the option changes.
+   */
+  listWidth?: number | null | undefined;
+  /** Called after the divider changed the list's width (`null`: back to automatic, by double-clicking it). */
+  onListWidthChange?: ((width: number | null) => void) | undefined;
 }
 
 // Property signatures (not methods) so the functions can be passed around unbound,
@@ -290,6 +309,11 @@ export interface GanttController {
   openTaskEditor: (id: Id) => boolean;
   /** Everything done in the task editor: typing, tabs, dependencies, saving, closing. */
   taskEditorAction: (action: TaskEditorAction) => boolean;
+  /**
+   * The divider between the task list and the timeline: drag it (start, move, end or cancel), move it with keys
+   * (arrows, with Shift for bigger steps, Home and End), or reset it to automatic. Returns whether it was used.
+   */
+  resizeList: (action: ListResizeAction) => boolean;
   /** A double-click on the timeline body: opens the editor for the bar there. Returns whether it did. */
   doubleClick: (point: TimelinePoint) => boolean;
   /** Expands a collapsed task or collapses an expanded one. Unknown ids and leaf tasks are ignored. */

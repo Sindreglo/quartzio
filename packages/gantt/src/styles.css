@@ -178,14 +178,22 @@
 
 /*
  * The task list's width: as wide as its columns plus its 1px right border (so the columns fit exactly and
- * there is no scrollbar), but never more than the max; narrower lists scroll horizontally. Measured here, as a
- * percentage of the whole chart, and copied into --qz-list-pane.
+ * there is no scrollbar), but never more than the max, or the width set with the divider (--qz-list-set-width,
+ * from the engine), and always leaving the timeline some room; narrower lists scroll horizontally. Measured
+ * here, as a percentage of the whole chart, and copied into --qz-list-pane.
  */
 .qz-gantt__sizer {
   position: absolute;
   top: 0;
   left: 0;
-  width: min(calc(var(--qz-list-width) + 1px), var(--qz-list-max-width, 60%));
+  width: max(
+    min(80px, 100%),
+    min(
+      calc(var(--qz-list-width) + 1px),
+      var(--qz-list-set-width, var(--qz-list-max-width, 60%)),
+      max(80px, 100% - 120px)
+    )
+  );
   height: 0;
   visibility: hidden;
 }
@@ -342,6 +350,42 @@
 
 .qz-gantt--overlay-scrollbars .qz-list__scrollbar {
   border-right-color: transparent;
+}
+
+/* The divider between the task list and the timeline: a wide grip with a thin line that shows on hover. */
+.qz-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--qz-list-pane, calc(var(--qz-list-width) + 1px)) - 5px);
+  z-index: 5;
+  width: 9px;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.qz-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+
+.qz-divider:hover::after,
+.qz-divider:focus-visible::after,
+.qz-divider--resizing::after {
+  background: var(--qz-divider-color, var(--qz-primary));
+}
+
+/* No text selection or other cursors while the divider is dragged. */
+.qz-gantt:has(.qz-divider--resizing) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* --- Task list --- */

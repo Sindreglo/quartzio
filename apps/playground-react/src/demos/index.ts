@@ -6,6 +6,7 @@ import { DataModelDemo } from './data-model';
 import { DependenciesDemo } from './dependencies';
 import { DragDemo } from './drag';
 import { EditingDemo } from './editing';
+import { ListWidthDemo } from './list-width';
 import { MenusDemo } from './menus';
 import { SchedulingDemo } from './scheduling';
 import { SelectionDemo } from './selection';
@@ -63,6 +64,13 @@ export const demos: Demo[] = [
     description:
       'Rows from the task tree with expand/collapse, configurable columns and virtualized rows. Try 10 000 tasks.',
     Component: TaskListDemo,
+  },
+  {
+    id: 'list-width',
+    title: 'Task list width',
+    description:
+      'Drag the divider between the task list and the timeline, or Tab to it and use the arrow keys (Shift for bigger steps, Home and End). Double-click it for the automatic width again. The app keeps the width: here it is remembered across reloads.',
+    Component: ListWidthDemo,
   },
   {
     id: 'bars',

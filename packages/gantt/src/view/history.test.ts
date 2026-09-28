@@ -188,3 +188,100 @@ describe('undo and redo (controlled)', () => {
     expect(g.getState().history).toEqual({ canUndo: false, canRedo: false });
   });
 });
+
+describe('where a change comes from (onChange source)', () => {
+  const sources = (onChange: ReturnType<typeof vi.fn>) =>
+    onChange.mock.calls.map(([change]) => (change as GanttDataChange).source);
+
+  it('says load for the scheduling of the initial data, uncontrolled and controlled', async () => {
+    for (const mode of ['defaultData', 'data'] as const) {
+      const onChange = vi.fn();
+      const g = createGantt({ [mode]: input, onChange });
+      g.subscribe(() => undefined);
+      await Promise.resolve();
+      expect(sources(onChange)).toEqual(['load']);
+    }
+  });
+
+  it('says edit, undo and redo, uncontrolled', () => {
+    const onChange = vi.fn();
+    const g = createGantt({ defaultData: input, onChange });
+    rename(g, 'one');
+    g.undo();
+    g.redo();
+    expect(sources(onChange)).toEqual(['edit', 'undo', 'redo']);
+  });
+
+  it('says edit, undo and redo, controlled, and load for other data passed in', () => {
+    let data: ProjectInput | ProjectData = input;
+    const onChange = vi.fn((change: GanttDataChange) => {
+      data = change.data;
+    });
+    const g = createGantt({ data: input, onChange });
+    const passBack = () => {
+      g.setOptions({ data });
+    };
+    rename(g, 'one');
+    passBack();
+    g.undo();
+    passBack();
+    g.redo();
+    passBack();
+    g.setOptions({ data: { ...input, tasks: [...(input.tasks ?? []), { id: 'c', duration: 1 }] } });
+    expect(sources(onChange)).toEqual(['edit', 'undo', 'redo', 'load']);
+  });
+
+  it('says edit for each of several edits in one run, and for edits from the keyboard', () => {
+    const onChange = vi.fn();
+    const g = createGantt({ data: input, onChange });
+    rename(g, 'one');
+    rename(g, 'two');
+    g.select(['b']);
+    g.keyDown({ key: 'Delete' });
+    expect(sources(onChange)).toEqual(['edit', 'edit', 'edit']);
+  });
+
+  it('says edit with undo turned off', () => {
+    const onChange = vi.fn();
+    const g = createGantt({ defaultData: input, onChange, undoRedo: false });
+    rename(g, 'one');
+    expect(sources(onChange)).toEqual(['edit']);
+  });
+
+  it('reports nothing for the initial data once newer data was loaded, or when it needs no scheduling', async () => {
+    const onChange = vi.fn();
+    const g = createGantt({ data: input, onChange });
+    g.subscribe(() => undefined);
+    g.setOptions({
+      data: {
+        settings: { timeZone: 'UTC', startDate: '2026-10-05' },
+        tasks: [{ id: 'a', name: 'Other', duration: 2 }],
+      },
+    });
+    await Promise.resolve();
+    expect(sources(onChange)).toEqual(['load']); // only the newer data's
+
+    const scheduled = onChange.mock.calls[0]?.[0] as GanttDataChange;
+    const again = vi.fn();
+    const h = createGantt({ data: scheduled.data, onChange: again });
+    h.subscribe(() => undefined);
+    await Promise.resolve();
+    expect(again).not.toHaveBeenCalled();
+  });
+
+  it('reports nothing for refused data or changes, nor after destroy', () => {
+    const onChange = vi.fn();
+    const g = createGantt({ data: input, onChange });
+    expect(() => {
+      g.setOptions({ data: { tasks: [{ id: 1, parentId: 'missing' }] } });
+    }).toThrow();
+    expect(() =>
+      g.transact((tx) => {
+        tx.tasks.update('missing', { name: 'x' });
+      }),
+    ).toThrow();
+    g.destroy();
+    rename(g, 'late');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

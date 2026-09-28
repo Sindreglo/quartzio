@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { useGridKeyboard } from './keyboard';
 import { chartPoint } from './events';
+import { ListDivider } from './Divider';
 import { ContextMenu } from './Menu';
 import { engineOptions } from './options';
 import { type RenderTaskEditor, TaskEditorDialog } from './TaskEditor';
@@ -123,7 +124,14 @@ export function Gantt(props: GanttProps): ReactElement {
   }, [measure]);
 
   // Header height and content sizes decide what scrolls, so they're part of the measurement.
-  useLayoutEffect(measure, [measure, header.height, timeAxis.totalWidth, listWidth, rows.totalHeight]);
+  useLayoutEffect(measure, [
+    measure,
+    header.height,
+    timeAxis.totalWidth,
+    listWidth,
+    state.list.width,
+    rows.totalHeight,
+  ]);
 
   // Scrollbars are hidden while there's nothing to scroll; when they appear, start where the content is.
   useLayoutEffect(() => {
@@ -153,6 +161,7 @@ export function Gantt(props: GanttProps): ReactElement {
     '--qz-tick-width': `${String(timeAxis.tickWidth)}px`,
     '--qz-row-height': `${String(rows.rowHeight)}px`,
     '--qz-scrollbar-size': `${String(layout.scrollbar)}px`,
+    ...(state.list.width !== null ? { '--qz-list-set-width': `${String(state.list.width)}px` } : {}),
   } as CSSProperties;
 
   return (
@@ -250,6 +259,7 @@ export function Gantt(props: GanttProps): ReactElement {
           onDone={focusChart}
         />
       )}
+      <ListDivider gantt={gantt} list={state.list} paneWidth={layout.listPane} rootRef={rootRef} />
       <Scrollbars
         scrollerRef={scrollerRef}
         listBodyRef={listBodyRef}

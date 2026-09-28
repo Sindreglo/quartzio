@@ -28,6 +28,7 @@ const DEMOS =
         'editing',
         'menus',
         'version-0.1',
+        'list-width',
       ];
 // Headless Chrome on macOS has overlay scrollbars (no room taken); the classic pass styles scrollbars so they
 // take room, like on Windows or with a mouse on macOS.
@@ -496,8 +497,12 @@ async function selectionChecks(send, demo) {
       `selection: Delete and Ctrl+Z left ${String(deleted.rows)} and ${String(undone.rows)} rows (from ${String(home.rows)})`,
     );
   }
-  // One Tab leaves the chart: it's one tab stop (a scroll area inside that became one could trap the keyboard).
+  // Two Tabs leave the chart: its tab stops are the chart and the list divider (a scroll area inside that became
+  // one could trap the keyboard).
   await evaluate(`document.querySelector('.qz-gantt').focus()`);
+  await press('Tab');
+  const onDivider = await evaluate(`document.activeElement?.classList.contains('qz-divider') ?? false`);
+  if (!onDivider) problems.push('selection: Tab from the chart does not reach the list divider');
   await press('Tab');
   const trapped = await evaluate(`document.querySelector('.qz-gantt').contains(document.activeElement)`);
   if (trapped) problems.push('selection: Tab does not leave the chart (a tab stop inside it)');
@@ -697,6 +702,77 @@ async function editingChecks(send, demo) {
 // Menus and the task editor with a real mouse and keys: a right-click opens the menu at the pointer, focused and
 // inside the window (also near its corner), the submenu opens on hover inside the window, Escape gives focus back;
 // the time axis menu zooms; a double-click on a bar opens the dialog, and Enter saves what was typed.
+// The divider between the task list and the timeline, with a real mouse: it sits on the list's right edge; a drag
+// narrows the list by as much as the pointer moved, keeping the headers and rows lined up; a double-click goes
+// back to the automatic width.
+async function dividerChecks(send, demo, shot) {
+  if (demo !== 'list-width') return [];
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result?.result?.value;
+  const mouse = (type, x, y, clickCount = 1) =>
+    send('Input.dispatchMouseEvent', {
+      type,
+      x,
+      y,
+      button: 'left',
+      buttons: type === 'mousePressed' ? 1 : 0,
+      clickCount,
+    });
+  const problems = [];
+  // Start from the automatic width (the demo remembers the last one), with the chart in the window.
+  await evaluate(`(() => {
+    localStorage.removeItem('qz-playground-list-width');
+    [...document.querySelectorAll('.pg-toolbar button')].find((b) => b.textContent === 'Automatic')?.click();
+    document.querySelector('.qz-gantt').scrollIntoView({ block: 'start' });
+  })()`);
+  await sleep(300);
+  const measure = () =>
+    evaluate(`(() => {
+      const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+      const divider = r('.qz-divider');
+      return {
+        divider: divider && divider.left + divider.width / 2,
+        list: r('.qz-list__body')?.right,
+        listHeader: r('.qz-list__header')?.right,
+        timeline: r('.qz-timeline__header')?.left,
+        width: r('.qz-list__body')?.width,
+        y: divider && divider.top + 120,
+      };
+    })()`);
+  const before = await measure();
+  if (!before.divider) return ['divider: none rendered'];
+  const aligned = (m) =>
+    Math.abs(m.divider - m.list) <= 2 &&
+    Math.abs(m.list - m.listHeader) <= 1 &&
+    Math.abs(m.list - m.timeline) <= 1;
+  if (!aligned(before)) problems.push(`divider: not on the task list's edge (${JSON.stringify(before)})`);
+
+  await mouse('mouseMoved', before.divider, before.y);
+  await mouse('mousePressed', before.divider, before.y);
+  for (let step = 1; step <= 5; step++) await mouse('mouseMoved', before.divider - step * 20, before.y);
+  await mouse('mouseReleased', before.divider - 100, before.y);
+  await sleep(300);
+  const after = await measure();
+  if (Math.abs(before.width - 100 - after.width) > 2)
+    problems.push(
+      `divider: dragging 100 px narrowed the list from ${String(before.width)} to ${String(after.width)}`,
+    );
+  if (!aligned(after))
+    problems.push(`divider: headers and rows out of line after a drag (${JSON.stringify(after)})`);
+  await shot('dragged');
+
+  await mouse('mouseMoved', after.divider, after.y);
+  for (const count of [1, 2]) {
+    await mouse('mousePressed', after.divider, after.y, count);
+    await mouse('mouseReleased', after.divider, after.y, count);
+  }
+  await sleep(300);
+  const reset = await measure();
+  if (Math.abs(reset.width - before.width) > 1)
+    problems.push(`divider: a double-click did not go back to the automatic width (${String(reset.width)})`);
+  return problems;
+}
+
 async function menuChecks(send, demo, shot) {
   if (demo !== 'menus') return [];
   const evaluate = async (expression) =>
@@ -1228,6 +1304,15 @@ try {
           const extra = await send('Page.captureScreenshot', { format: 'png' });
           const name = `${demo.replace(':', '-')}-${variant}-${suffix}.png`;
           writeFileSync(join(OUT, name), Buffer.from(extra.result.data, 'base64'));
+        })),
+      );
+      problems.push(
+        ...(await dividerChecks(send, id, async (suffix) => {
+          const extra = await send('Page.captureScreenshot', { format: 'png' });
+          writeFileSync(
+            join(OUT, `${demo.replace(':', '-')}-${variant}-${suffix}.png`),
+            Buffer.from(extra.result.data, 'base64'),
+          );
         })),
       );
       problems.push(
