@@ -1,6 +1,6 @@
 {
   "name": "@quartzio/gantt",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Headless, framework-agnostic Gantt chart engine",
   "license": "MIT",
   "author": "Sindre Glomnes",

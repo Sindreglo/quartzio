@@ -1,6 +1,6 @@
 {
   "name": "@quartzio/gantt-react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React Gantt chart component built on @quartzio/gantt",
   "license": "MIT",
   "author": "Sindre Glomnes",
