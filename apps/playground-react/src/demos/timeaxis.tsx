@@ -8,7 +8,7 @@ import {
 } from '@quartzio/gantt';
 import { Gantt } from '@quartzio/gantt-react';
 import { useMemo, useRef, useState } from 'react';
-import { timeZones } from '../data/calendars';
+import { timeZones } from '../data/timeZones';
 import { sampleProject } from '../data/sampleProject';
 
 const LOCALES = ['en-US', 'nb-NO', 'de-DE', 'ja-JP'];

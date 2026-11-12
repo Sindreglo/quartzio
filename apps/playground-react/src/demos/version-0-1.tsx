@@ -1,3 +1,4 @@
+import { CodeView } from '../CodeView';
 import { EverydayScenario } from './version-0-1/EverydayScenario';
 import { PowerScenario } from './version-0-1/PowerScenario';
 
@@ -15,6 +16,7 @@ export function Version01Demo() {
           for the menu, Ctrl/Cmd+Z to undo. The chart keeps the edits itself.
         </p>
         <EverydayScenario />
+        <CodeView files={['demos/version-0-1/EverydayScenario.tsx', 'data/renovation.ts']} open />
       </section>
       <section className="pg-scenario">
         <h3>2. Power user: a construction program</h3>
@@ -26,6 +28,9 @@ export function Version01Demo() {
           validates changes, logs them, and saves the plan. Scale it up to a portfolio of 80 buildings.
         </p>
         <PowerScenario />
+        <CodeView
+          files={['demos/version-0-1/PowerScenario.tsx', 'data/construction.ts', 'demos/useHistory.ts']}
+        />
       </section>
     </div>
   );

@@ -25,37 +25,123 @@ kbd {
   font-family: var(--qz-font-mono);
 }
 
-.pg-layout {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 100vh;
-}
-
-.pg-nav {
+/* --- Navbar with a mega-menu --- */
+.pg-navbar {
   position: sticky;
   top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--qz-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--qz-line);
+}
+
+.pg-navbar__inner {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
-  height: 100vh;
-  padding: 24px 16px;
-  overflow-y: auto;
-  background: var(--qz-sunken);
-  border-right: 1px solid var(--qz-line);
+  gap: 24px;
+  align-items: center;
+  max-width: 1440px;
+  height: 60px;
+  padding: 0 32px;
+  margin: 0 auto;
 }
 
 .pg-brand {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 8px;
+  gap: 12px;
+  align-items: center;
+  text-decoration: none;
 }
 
 .pg-logo {
   display: block;
   width: auto;
-  height: 28px;
-  align-self: flex-start;
+  height: 26px;
+}
+
+.pg-brand__label {
+  font-family: var(--qz-font-mono);
+  font-size: 12px;
+  color: var(--qz-text-faint);
+}
+
+/* Sections: plain links, the current one underlined by a bar. */
+.pg-navbar__sections {
+  display: flex;
+  gap: 4px;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pg-navbar__sections a {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--qz-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pg-navbar__sections a:hover {
+  color: var(--qz-text);
+}
+
+.pg-navbar__sections a[aria-current='page'] {
+  font-weight: 500;
+  color: var(--qz-text);
+}
+
+.pg-navbar__sections a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  background: var(--qz-text);
+  border-radius: 2px;
+}
+
+.pg-navbar__end {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.pg-navbar__link {
+  font-size: 14px;
+  color: var(--qz-text-muted);
+  text-decoration: none;
+}
+
+.pg-navbar__link:hover {
+  color: var(--qz-text);
+}
+
+/* A section's page: its demos one under the other. */
+.pg-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.pg-demo {
+  /* Below the sticky navbar when jumped to. */
+  scroll-margin-top: 84px;
+}
+
+.pg-demo + .pg-demo {
+  padding-top: 48px;
+  margin-top: 56px;
+  border-top: 1px solid var(--qz-line);
 }
 
 .pg-eyebrow {
@@ -64,42 +150,11 @@ kbd {
   color: var(--qz-accent);
 }
 
-.pg-nav ul {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pg-nav a {
-  display: block;
-  padding: 7px 10px;
-  font-size: 14px;
-  color: var(--qz-text-muted);
-  text-decoration: none;
-  border-radius: var(--qz-radius-sm);
-}
-
-.pg-nav a:hover {
-  color: var(--qz-text);
-}
-
-.pg-nav a[aria-current='page'] {
-  font-weight: 500;
-  color: var(--qz-text);
-  background: var(--qz-raised);
-  box-shadow: inset 0 0 0 1px var(--qz-line);
-}
-
 /* Segmented control: the active segment on a chip. */
 .pg-segmented {
   display: flex;
   gap: 4px;
-  align-self: flex-start;
   padding: 3px;
-  margin: 0 8px;
   border: 1px solid var(--qz-line);
   border-radius: 8px;
 }
@@ -121,8 +176,14 @@ kbd {
 }
 
 .pg-main {
-  min-width: 0;
-  padding: 40px 32px 64px;
+  max-width: 1440px;
+  padding: 40px 32px 80px;
+  margin: 0 auto;
+}
+
+/* Below the sticky navbar when a chart is scrolled into view (the layout checks do that). */
+.pg-main .qz-gantt {
+  scroll-margin-top: 76px;
 }
 
 .pg-header {
@@ -132,6 +193,7 @@ kbd {
   margin-bottom: 28px;
 }
 
+.pg-header h1,
 .pg-header h2 {
   margin: 0;
   font-size: 32px;
@@ -248,10 +310,11 @@ kbd {
   list-style: none;
 }
 
-.pg-tree-row {
+.pg-panel .pg-tree-row {
   display: flex;
   justify-content: space-between;
   width: 100%;
+  height: auto;
   padding: 6px 10px;
   font: inherit;
   color: inherit;
@@ -262,11 +325,11 @@ kbd {
   border-radius: var(--qz-radius-sm);
 }
 
-.pg-tree-row:hover {
+.pg-panel .pg-tree-row:hover {
   background: var(--qz-sunken);
 }
 
-.pg-tree-row[aria-pressed='true'] {
+.pg-panel .pg-tree-row[aria-pressed='true'] {
   background: var(--qz-chip);
 }
 
@@ -338,60 +401,34 @@ kbd {
   font-size: 12px;
 }
 
-.pg-days {
-  display: grid;
-  gap: 4px;
-}
-
-.pg-day {
-  display: grid;
-  grid-template-columns: 140px 1fr;
-  gap: 8px;
-  align-items: center;
-  font-family: var(--qz-font-mono);
-  font-size: 11px;
-}
-
-.pg-day-label em {
-  font-style: normal;
-  color: var(--qz-hue-amber);
-}
-
-.pg-day-track {
-  position: relative;
-  height: 18px;
-  border-radius: var(--qz-radius-xs);
-  background: repeating-linear-gradient(
-    90deg,
-    var(--qz-sunken) 0,
-    var(--qz-sunken) calc(100% / 24 - 1px),
-    var(--qz-line) calc(100% / 24 - 1px),
-    var(--qz-line) calc(100% / 24)
-  );
-}
-
-.pg-work,
-.pg-task {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-
-.pg-work {
-  background: var(--qz-hue-green-soft);
-}
-
-.pg-task {
-  top: 5px;
-  bottom: 5px;
-  border-radius: 3px;
-  background: var(--qz-hue-sky);
-}
-
 .pg-list {
   margin: 0;
   padding-left: 18px;
   font-size: 14px;
+}
+
+.pg-list li {
+  margin-bottom: 6px;
+}
+
+/* A small action after the item's text, e.g. Remove. */
+.pg-list button {
+  height: 24px;
+  margin-left: 6px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--qz-text-muted);
+  cursor: pointer;
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line-strong);
+  border-radius: var(--qz-radius-pill);
+}
+
+.pg-list button:hover {
+  color: var(--qz-text);
+  background: var(--qz-sunken);
 }
 
 /* --- Version 0.1 scenarios --- */
@@ -420,7 +457,119 @@ kbd {
 }
 
 @media (max-width: 900px) {
-  .pg-main {
-    padding: 28px 20px 48px;
+  .pg-navbar__inner {
+    gap: 12px;
+    padding: 0 16px;
   }
+
+  .pg-brand__label,
+  .pg-navbar__link {
+    display: none;
+  }
+
+  .pg-main {
+    padding: 28px 16px 48px;
+  }
+}
+
+/* --- Code view: the demo's own source files --- */
+.pg-code-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  align-self: flex-start;
+  justify-self: start;
+  height: 34px;
+  padding: 0 16px;
+  margin-top: 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--qz-text);
+  cursor: pointer;
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line-strong);
+  border-radius: var(--qz-radius-pill);
+}
+
+.pg-code-toggle span {
+  font-family: var(--qz-font-mono);
+  font-size: 12px;
+  color: var(--qz-accent);
+}
+
+.pg-code-toggle:hover {
+  background: var(--qz-sunken);
+}
+
+.pg-codeview {
+  --sh-keyword: oklch(0.5 0.13 300);
+  --sh-string: oklch(0.5 0.12 150);
+  --sh-class: var(--qz-accent);
+  --sh-entity: var(--qz-accent);
+  --sh-property: var(--qz-text-2);
+  --sh-jsxliterals: var(--qz-text);
+  --sh-identifier: var(--qz-text);
+  --sh-sign: var(--qz-text-muted);
+  --sh-comment: var(--qz-text-faint);
+
+  min-width: 0;
+  margin-top: 16px;
+  overflow: hidden;
+  background: var(--qz-raised);
+  border: 1px solid var(--qz-line);
+  border-radius: var(--qz-radius-lg);
+}
+
+.qz-dark .pg-codeview {
+  --sh-keyword: oklch(0.72 0.12 300);
+  --sh-string: oklch(0.72 0.12 150);
+}
+
+.pg-codeview__bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 6px;
+  border-bottom: 1px solid var(--qz-line);
+}
+
+.pg-codeview__tabs,
+.pg-codeview__actions {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.pg-codeview__bar button {
+  flex: none;
+  padding: 6px 10px;
+  font-family: var(--qz-font-mono);
+  font-size: 12px;
+  color: var(--qz-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--qz-radius-sm);
+}
+
+.pg-codeview__bar button:hover {
+  color: var(--qz-text);
+}
+
+.pg-codeview__tabs button[aria-selected='true'] {
+  color: var(--qz-text);
+  background: var(--qz-chip);
+}
+
+.pg-codeview__code {
+  max-height: 560px;
+  padding: 16px 20px;
+  margin: 0;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  tab-size: 2;
 }

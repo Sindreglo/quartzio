@@ -75,9 +75,3 @@ export const kitchenRenovation: ProjectInput = {
     { id: 'd21', from: 'paint', to: 'done' },
   ],
 };
-
-/** The code an everyday user writes, shown in the demo. */
-export const kitchenRenovationCode = `import { Gantt } from '@quartzio/gantt-react';
-import '@quartzio/gantt-react/styles.css';
-
-<Gantt defaultData={kitchenRenovation} style={{ height: 480 }} />`;

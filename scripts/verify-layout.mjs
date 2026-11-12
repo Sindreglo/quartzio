@@ -677,7 +677,9 @@ async function editingChecks(send, demo) {
       end: tip.classList.contains('qz-tooltip--end'),
       inside: rect.left >= view.left - 1 && rect.right <= view.right + 1,
       // Not squeezed to a word per line: the title fits on one line or is cut with an ellipsis.
-      wide: rect.width >= Math.min(200, view.right - list.right - 20) && title.getBoundingClientRect().height < 20,
+      // (160 px, or all the room there is: a short tooltip is as narrow as its content.)
+      wide: rect.width >= Math.min(160, view.right - list.right - 20) && title.getBoundingClientRect().height < 20,
+      width: rect.width,
       };
   })()`);
   if (!end?.inside || !end.wide) problems.push(`editing: end-aligned tooltip wrong (${JSON.stringify(end)})`);
@@ -1267,11 +1269,12 @@ try {
         mobile: false,
       });
       const [id, option] = demo.split(':');
-      // Via a blank page: navigating to the same URL with only the hash changed wouldn't reload the demo.
+      // Via a blank page, so every variant starts from a fresh load.
       await send('Page.navigate', { url: 'about:blank' });
       // The theme explicitly every time: the playground remembers the last one.
       await send('Page.navigate', {
-        url: `http://localhost:${String(PORT)}/?theme=${dark ? 'dark' : 'light'}#${id}`,
+        // ?only=: the demo on its own (a section's page shows several charts).
+        url: `http://localhost:${String(PORT)}/?theme=${dark ? 'dark' : 'light'}&only=${id}`,
       });
       await sleep(300);
       if (classic) await send('Runtime.evaluate', { expression: CLASSIC_SCROLLBARS });

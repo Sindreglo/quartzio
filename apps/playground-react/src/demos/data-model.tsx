@@ -209,7 +209,7 @@ export function DataModelDemo() {
 
       <section>
         <h3>&lt;Gantt data=&#123;data&#125; onChange=&#123;…&#125; /&gt;</h3>
-        <Gantt ref={gantt} data={data} onChange={handleChange} style={{ height: 120 }} />
+        <Gantt ref={gantt} data={data} onChange={handleChange} style={{ height: 440 }} />
       </section>
     </div>
   );

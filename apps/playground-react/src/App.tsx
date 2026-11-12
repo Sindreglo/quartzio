@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { demos } from './demos';
+import { type Demo, demos } from './demos';
+import { Navbar, type Theme } from './Navbar';
+import { useRoute } from './router';
 
-const demoIdFromHash = (): string => window.location.hash.slice(1);
-
-type Theme = 'light' | 'dark';
 const THEME_KEY = 'qz-playground-theme';
 
 function storedTheme(): Theme {
@@ -17,19 +16,22 @@ function storedTheme(): Theme {
   }
 }
 
-export function App() {
-  const [demoId, setDemoId] = useState(demoIdFromHash);
-  const [theme, setTheme] = useState(storedTheme);
+function DemoSection({ demo, heading }: { demo: Demo; heading: 'h1' | 'h2' }) {
+  const Heading = heading;
+  return (
+    <section id={demo.id} className="pg-demo">
+      <header className="pg-header">
+        <Heading>{demo.title}</Heading>
+        <p>{demo.description}</p>
+      </header>
+      <demo.Component />
+    </section>
+  );
+}
 
-  useEffect(() => {
-    const onHashChange = () => {
-      setDemoId(demoIdFromHash());
-    };
-    window.addEventListener('hashchange', onHashChange);
-    return () => {
-      window.removeEventListener('hashchange', onHashChange);
-    };
-  }, []);
+export function App() {
+  const { section, target, only } = useRoute();
+  const [theme, setTheme] = useState(storedTheme);
 
   // On the root element, so the whole playground (and every chart in it) follows, as an app would do it.
   useEffect(() => {
@@ -41,55 +43,33 @@ export function App() {
     }
   }, [theme]);
 
-  const active = demos.find((demo) => demo.id === demoId) ?? demos[0];
+  useEffect(() => {
+    document.title = `${(only ?? section).title} · Quartzio Playground`;
+  }, [only, section]);
+
+  // A demo in the address: scroll to it once its section is shown.
+  useEffect(() => {
+    if (target && !only) document.getElementById(target.id)?.scrollIntoView({ block: 'start' });
+  }, [target, only, section]);
+
+  const inSection = demos.filter((demo) => demo.section === section.id);
 
   return (
-    <div className="pg-layout">
-      <nav className="pg-nav">
-        <div className="pg-brand">
-          <img
-            className="pg-logo"
-            src={theme === 'dark' ? '/quartzio-logo-dark-bg.svg' : '/quartzio-logo-light-bg.svg'}
-            alt="Quartzio"
-          />
-          <span className="pg-eyebrow">Playground</span>
-        </div>
-        <div className="pg-segmented" role="group" aria-label="Theme">
-          {(['light', 'dark'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={theme === option}
-              onClick={() => {
-                setTheme(option);
-              }}
-            >
-              {option === 'light' ? 'Light' : 'Dark'}
-            </button>
-          ))}
-        </div>
-        <ul>
-          {demos.map((demo) => (
-            <li key={demo.id}>
-              <a href={`#${demo.id}`} aria-current={demo === active ? 'page' : undefined}>
-                {demo.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <main className="pg-main">
-        {active && (
+    <>
+      <Navbar section={section} theme={theme} onTheme={setTheme} />
+      <main className="pg-main" key={only ? `only:${only.id}` : section.id}>
+        {only ? (
+          <DemoSection demo={only} heading="h1" />
+        ) : (
           <>
-            <header className="pg-header">
-              <span className="pg-eyebrow">{active.id}</span>
-              <h2>{active.title}</h2>
-              <p>{active.description}</p>
-            </header>
-            <active.Component />
+            {/* The page's heading for screen readers; the demos' titles are what shows. */}
+            <h1 className="pg-visually-hidden">{section.title}</h1>
+            {inSection.map((demo) => (
+              <DemoSection key={demo.id} demo={demo} heading="h2" />
+            ))}
           </>
         )}
       </main>
-    </div>
+    </>
   );
 }
