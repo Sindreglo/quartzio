@@ -36,8 +36,22 @@
       "default": "./dist/styles.css"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./styles.css": {
+        "default": "./dist/styles.css"
+      }
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.*",
+    "API.md"
   ],
   "scripts": {
     "build": "tsdown",

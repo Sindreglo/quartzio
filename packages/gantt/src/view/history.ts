@@ -23,7 +23,7 @@ export interface History {
 
 const LIMIT = 100;
 
-/** Undo and redo stacks of patches (see ADR 0010). The state object is the same while nothing changes. */
+/** Undo and redo stacks of patches. The state object is the same while nothing changes. */
 export function createHistory(): History {
   let undo: Patch[] = [];
   let redo: Patch[] = [];

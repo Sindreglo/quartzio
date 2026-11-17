@@ -11,7 +11,7 @@ const NO_BOUND = Number.NEGATIVE_INFINITY;
 /**
  * Schedules the project and returns the operations that write the results back: for automatically scheduled
  * tasks, dates as soon as possible after the project start and their predecessors' requirements; for parents,
- * the span of their children; start, end and duration kept consistent everywhere. See ADR 0008.
+ * the span of their children; start, end and duration kept consistent everywhere.
  *
  * `operations` are the ones just applied (to tell a new end from a new duration), or `null` for loaded data.
  * Pure, idempotent (nothing to add to a state it scheduled), and doesn't throw for calendar trouble: a task

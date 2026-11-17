@@ -233,7 +233,7 @@ export function barUnder(
 /**
  * Dragging on the timeline, as a small state machine fed with pointer events in timeline coordinates: moving,
  * resizing, drawing bars, dragging progress and drawing dependencies. Snaps to the preset's time resolution; a
- * drop becomes one transaction (see ADR 0009).
+ * drop becomes one transaction.
  */
 export function createInteraction(context: InteractionContext): Interaction {
   let pending: Pending | null = null;

@@ -37,7 +37,7 @@ export type KeyCommand =
   | { readonly type: 'undo' }
   | { readonly type: 'redo' };
 
-/** The keyboard of the task grid (see ADR 0010). `null` for keys it leaves alone. */
+/** The keyboard of the task grid. `null` for keys it leaves alone. */
 export function keyCommand(input: KeyInput, context: KeyContext): KeyCommand | null {
   const { key } = input;
   if (typeof key !== 'string' || input.alt === true) return null;

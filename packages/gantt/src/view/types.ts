@@ -155,7 +155,10 @@ export interface GanttOptions {
    * interval is shaded; with day ticks, whole non-working days; with longer ticks, nothing.
    */
   showNonWorkingTime?: boolean | undefined;
-  /** Move tasks by dragging their bars. Default `true`. See ADR 0009 for what a drop changes. */
+  /**
+   * Move tasks by dragging their bars. Default `true`. A drop is one change; an automatically scheduled task gets
+   * a "start no earlier than" constraint at its new start.
+   */
   taskDrag?: boolean | undefined;
   /** Change a task's duration by dragging the end of its bar. Default `true`. */
   taskResize?: boolean | undefined;
@@ -184,7 +187,7 @@ export interface GanttOptions {
   onSelectionChange?: ((selection: readonly Id[]) => void) | undefined;
   /** Show a tooltip for the task under the pointer (see `hover`). Default `true`. */
   taskTooltip?: boolean | undefined;
-  /** Edit cells in the task list (double-click, Enter/F2). Default `true`. See ADR 0011 for what an edit does. */
+  /** Edit cells in the task list (double-click, Enter/F2). Default `true`. Each edit is one change. */
   cellEdit?: boolean | undefined;
   /** A context menu on tasks (right-click, the ContextMenu key or Shift+F10). Default `true`. */
   taskMenu?: boolean | undefined;
@@ -263,7 +266,7 @@ export interface GanttController {
   clearSelection: () => void;
   /**
    * A key pressed while the chart has focus: moves the cursor and selection, expands and collapses, deletes,
-   * undoes. Returns whether the key was used, so the renderer can stop it (see ADR 0010 for the keys).
+   * undoes. Returns whether the key was used, so the renderer can stop it.
    */
   keyDown: (key: KeyInput) => boolean;
   /**

@@ -31,7 +31,7 @@ export interface MenuItem {
   readonly action?: ((context: MenuContext) => void) | undefined;
 }
 
-/** The open menu (see ADR 0012). */
+/** The open menu. */
 export interface MenuState {
   readonly kind: 'task' | 'timeAxis';
   readonly taskId: Id | null;

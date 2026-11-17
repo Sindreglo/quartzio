@@ -1,6 +1,7 @@
 import type { GanttController, ProjectData, ProjectInput } from '@quartzio/gantt';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { createRef, StrictMode, useState } from 'react';
+import { createRef, type ReactElement, StrictMode, useState } from 'react';
+import { hydrateRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Gantt } from './Gantt';
@@ -116,10 +117,142 @@ describe('<Gantt />', () => {
     expect(rowCount(container)).toBe(2);
   });
 
-  it('renders on the server', () => {
-    const html = renderToString(<Gantt defaultData={data} />);
-    expect(html.match(/qz-grid__row/g)).toHaveLength(2);
-    expect(html).toContain('qz-header__cell');
+  describe('server rendering and hydration', () => {
+    const fixed: ProjectInput = {
+      settings: { timeZone: 'UTC' },
+      tasks: [
+        { id: 1, name: 'Design', startDate: '2026-10-05', endDate: '2026-10-08' },
+        { id: 2, name: 'Build', startDate: '2026-10-08', endDate: '2026-10-20' },
+      ],
+    };
+
+    // Hydrated roots, unmounted after each test (also when an assertion failed).
+    const mounted: { root: Root; container: HTMLElement }[] = [];
+    afterEach(() => {
+      for (const { root, container } of mounted.splice(0)) {
+        act(() => {
+          root.unmount();
+        });
+        container.remove();
+      }
+    });
+
+    /**
+     * Hydrates server HTML in the DOM and returns what React reported. The HTML defaults to `element` rendered on
+     * the "server" now; pass it in to hydrate HTML rendered at another moment.
+     */
+    async function hydrate(element: ReactElement, html: string = renderToString(element)) {
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      document.body.append(container);
+      const errors: unknown[] = [];
+      const consoleError = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args);
+      });
+      try {
+        await act(async () => {
+          const root = hydrateRoot(container, element, {
+            onRecoverableError: (error) => {
+              errors.push(error);
+            },
+          });
+          mounted.push({ root, container });
+          await Promise.resolve();
+        });
+      } finally {
+        consoleError.mockRestore();
+      }
+      return { html, container, errors };
+    }
+
+    it('renders the chart on the server when the locale and time zone are given', () => {
+      const html = renderToString(<Gantt defaultData={fixed} locale="en-US" />);
+      expect(html.match(/qz-grid__row/g)).toHaveLength(2);
+      expect(html).toContain('qz-header__cell');
+    });
+
+    it('renders only the frame on the server with the host language or time zone', () => {
+      for (const element of [
+        <Gantt key="neither" defaultData={data} />,
+        <Gantt key="no-locale" defaultData={fixed} />,
+        <Gantt key="local-zone" defaultData={data} locale="en-US" />,
+      ]) {
+        const html = renderToString(element);
+        expect(html).toContain('qz-gantt');
+        expect(html).not.toContain('qz-grid__row');
+        expect(html).not.toContain('qz-header__cell');
+      }
+    });
+
+    it('keeps the class name and style on the frame', () => {
+      const html = renderToString(<Gantt className="custom" style={{ height: 300 }} />);
+      expect(html).toContain('custom');
+      expect(html).toContain('height:300px');
+    });
+
+    it('hydrates the frame without mismatches and then shows the chart', async () => {
+      const { container, errors } = await hydrate(<Gantt defaultData={data} />);
+      expect(errors).toEqual([]);
+      expect(rowCount(container)).toBe(2);
+      expect(container.querySelector('.qz-header__cell')).not.toBeNull();
+    });
+
+    it('hydrates a server-rendered chart without mismatches', async () => {
+      const { html, container, errors } = await hydrate(<Gantt defaultData={fixed} locale="en-US" />);
+      expect(html.match(/qz-grid__row/g)).toHaveLength(2);
+      expect(errors).toEqual([]);
+      expect(rowCount(container)).toBe(2);
+    });
+
+    it('shows the today line only after hydration, so a clock that moved on does not mismatch', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-06T09:00:00Z'));
+      const element = <Gantt defaultData={fixed} locale="en-US" preset="hourAndDay" />;
+      const html = renderToString(element);
+      expect(html).not.toContain('qz-today');
+      // The browser hydrates that HTML some hours later.
+      vi.setSystemTime(new Date('2026-10-06T15:00:00Z'));
+      const { container, errors } = await hydrate(element, html);
+      expect(errors).toEqual([]);
+      expect(container.querySelector('.qz-today')).not.toBeNull();
+    });
+
+    it('renders only the frame on the server when the timeline range comes from the clock', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-06T09:00:00Z'));
+      // No dated task and no range: the timeline starts at the current week.
+      const element = (
+        <Gantt
+          defaultData={{ settings: { timeZone: 'UTC' }, tasks: [{ id: 1, name: 'Unscheduled' }] }}
+          locale="en-US"
+        />
+      );
+      const html = renderToString(element);
+      expect(html).not.toContain('qz-header__cell');
+      // Cached HTML, hydrated a week later.
+      vi.setSystemTime(new Date('2026-10-13T09:00:00Z'));
+      const { container, errors } = await hydrate(element, html);
+      expect(errors).toEqual([]);
+      expect(rowCount(container)).toBe(1);
+    });
+
+    it('renders the chart on the server with a given range, even without dated tasks', () => {
+      const html = renderToString(
+        <Gantt
+          defaultData={{ settings: { timeZone: 'UTC' }, tasks: [{ id: 1 }] }}
+          locale="en-US"
+          startDate="2026-10-01"
+          endDate="2026-11-01"
+        />,
+      );
+      expect(html).toContain('qz-header__cell');
+    });
+  });
+
+  it('renders the chart right away in an app that only renders on the client', () => {
+    const { container } = render(<Gantt defaultData={data} />);
+    expect(rowCount(container)).toBe(2);
+    expect(container.querySelector('.qz-header__cell')).not.toBeNull();
   });
 
   it('renders the time axis header in the given preset and locale', () => {

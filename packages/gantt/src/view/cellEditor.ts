@@ -68,7 +68,7 @@ function cellOf(view: EditorView, id: Id, columnIndex: number) {
 const columnIndexOf = (view: EditorView, columnId: string) =>
   view.columns.state.items.findIndex((column) => column.id === columnId);
 
-/** Editing cells in the task list (see ADR 0011). */
+/** Editing cells in the task list. */
 export function createCellEditor(context: EditorContext): CellEditor {
   let open: Open | null = null;
   let shown: CellEdit | null = null;

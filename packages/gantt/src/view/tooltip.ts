@@ -9,7 +9,7 @@ import { barUnder, type TimelinePoint } from './interaction';
 import { rowKey, type RowsState } from './rows';
 import type { Viewport } from './types';
 
-/** The tooltip for the task under the pointer: what to show, and where (see ADR 0011). */
+/** The tooltip for the task under the pointer: what to show, and where. */
 export interface TaskTooltip {
   readonly taskId: Id;
   /** Key of the task's row. */

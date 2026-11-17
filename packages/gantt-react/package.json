@@ -36,8 +36,21 @@
       "default": "./dist/styles.css"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./styles.css": {
+        "default": "./dist/styles.css"
+      }
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.*"
   ],
   "scripts": {
     "build": "tsdown",
@@ -45,14 +58,13 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@quartzio/gantt": "workspace:*"
-  },
   "peerDependencies": {
+    "@quartzio/gantt": "workspace:^",
     "react": ">=19",
     "react-dom": ">=19"
   },
   "devDependencies": {
+    "@quartzio/gantt": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

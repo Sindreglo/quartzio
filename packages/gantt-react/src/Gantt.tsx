@@ -12,6 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { dependsOnHost, useHydrated } from './hydration';
 import { useGridKeyboard } from './keyboard';
 import { chartPoint } from './events';
 import { ListDivider } from './Divider';
@@ -28,8 +29,10 @@ import type { RenderTaskTooltip } from './Tooltip';
  * Passing the `data` prop — even as `undefined`, e.g. while loading — makes the chart controlled.
  * Omit it and use `defaultData` for uncontrolled usage. The mode is fixed on mount.
  *
- * Server rendering: pass an explicit `locale` and a project `settings.timeZone` (and dated tasks or
- * `startDate`/`endDate`), so the server renders the same timeline as the browser.
+ * Server rendering: with an explicit `locale`, a project `settings.timeZone`, and dated tasks (or `startDate` and
+ * `endDate`), the server renders the chart. Otherwise it renders an empty frame, and the chart fills in once the
+ * page is hydrated: the server can't know the browser's language, time zone and clock. The today line only shows
+ * after hydration.
  */
 export interface GanttProps extends GanttOptions {
   className?: string | undefined;
@@ -53,6 +56,10 @@ export function Gantt(props: GanttProps): ReactElement {
   const [gantt] = useState<GanttController>(() => createGantt(options));
   // The third argument makes server rendering work; the server snapshot is the initial state.
   const state = useSyncExternalStore(gantt.subscribe, gantt.getState, gantt.getState);
+  const hydrated = useHydrated();
+  // What follows the host's language, time zone or clock would differ between the server's HTML and the browser's
+  // first render; until hydrated, only the frame is rendered then.
+  const frameOnly = !hydrated && dependsOnHost(props, state.project);
   const rootRef = useRef<HTMLDivElement>(null);
   // One scroll area for everything, in both directions: the headers are sticky at the top and the task list at
   // the left, so the browser moves all of it together. (Syncing separate scroll areas from scroll events lags a
@@ -121,11 +128,12 @@ export function Gantt(props: GanttProps): ReactElement {
     return () => {
       observer.disconnect();
     };
-  }, [measure]);
+  }, [measure, frameOnly]);
 
   // Header height and content sizes decide what scrolls, so they're part of the measurement.
   useLayoutEffect(measure, [
     measure,
+    frameOnly,
     header.height,
     timeAxis.totalWidth,
     listWidth,
@@ -152,6 +160,9 @@ export function Gantt(props: GanttProps): ReactElement {
   if (layout.vertical) classNames.push('qz-gantt--scroll-y');
   if (layout.horizontal) classNames.push('qz-gantt--scroll-x');
   if (className) classNames.push(className);
+  if (frameOnly)
+    return <div ref={rootRef} className={classNames.join(' ')} style={props.style} aria-busy="true" />;
+
   const style = {
     ...props.style,
     '--qz-list-width': `${String(listWidth)}px`,
@@ -244,7 +255,7 @@ export function Gantt(props: GanttProps): ReactElement {
             rows={rows.items}
             dependencies={state.dependencies}
             nonWorkingTime={state.nonWorkingTime}
-            today={state.today}
+            today={hydrated ? state.today : null}
             width={timeAxis.totalWidth}
             height={rows.totalHeight}
           />

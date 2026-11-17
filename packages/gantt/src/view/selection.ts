@@ -9,7 +9,7 @@ export interface KeyModifiers {
   readonly alt?: boolean | undefined;
 }
 
-/** Selected tasks, the keyboard cursor, and where Shift ranges start from (see ADR 0010). */
+/** Selected tasks, the keyboard cursor, and where Shift ranges start from. */
 export interface Selection {
   /** In the order they were selected; a range in row order. */
   readonly ids: readonly Id[];

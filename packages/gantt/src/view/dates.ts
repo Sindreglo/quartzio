@@ -1,6 +1,6 @@
 import type { Task } from '../data/types';
 
-/** A task's dates as shown (scheduling keeps them in the task itself, see ADR 0008). */
+/** A task's dates as shown (scheduling keeps them in the task itself). */
 export interface TaskDates {
   readonly start: number;
   readonly end: number;

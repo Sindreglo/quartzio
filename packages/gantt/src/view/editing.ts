@@ -11,7 +11,7 @@ import type { ProposedChange } from './interaction';
 /** The kind of field a cell is edited in. */
 export type EditKind = 'text' | 'duration' | 'percent' | 'date' | 'datetime';
 
-/** The cell being edited (see ADR 0011). */
+/** The cell being edited. */
 export interface CellEdit {
   readonly taskId: Id;
   /** Key of the task's row. */

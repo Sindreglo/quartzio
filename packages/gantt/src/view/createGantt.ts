@@ -304,7 +304,7 @@ export function createGantt(options: GanttOptions = {}): GanttController {
   let view = resolveViewOptions(options);
   let behaviour = resolveBehaviour(options);
   const controlled = 'data' in options;
-  // Scheduling writes computed dates back into the data (ADR 0008).
+  // Scheduling writes computed dates back into the data.
   const project = createProject({}, { propagate: scheduleProject });
   const initialPatch = project.load((controlled ? options.data : options.defaultData) ?? {});
   const history = createHistory();

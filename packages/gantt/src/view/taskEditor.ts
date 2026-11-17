@@ -47,7 +47,7 @@ export interface TaskEditorDependency {
   readonly error: string | null;
 }
 
-/** The open task editor (see ADR 0012). */
+/** The open task editor. */
 export interface TaskEditorState {
   readonly taskId: Id;
   /** The task as it is now. */
@@ -184,7 +184,7 @@ function parseLag(text: string, view: TaskEditorView): { value: number; unit: Ti
   return { value: match[1] === '-' ? -parsed.value : parsed.value, unit: parsed.unit };
 }
 
-/** Editing a task in a dialog: a draft, saved as one change (see ADR 0012). */
+/** Editing a task in a dialog: a draft, saved as one change. */
 export function createTaskEditor(context: TaskEditorContext): TaskEditor {
   let draft: Draft | null = null;
   let nextKey = 0;
