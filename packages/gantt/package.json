@@ -1,6 +1,6 @@
 {
   "name": "@quartzio/gantt",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Headless Gantt chart engine in TypeScript: scheduling in working time, dependencies, calendars, layout, drag and drop and undo, with no dependencies and no DOM",
   "license": "MIT",
   "author": {

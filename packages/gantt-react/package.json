@@ -1,6 +1,6 @@
 {
   "name": "@quartzio/gantt-react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React Gantt chart component: task list and timeline with scheduling, dependencies, working-time calendars, drag and drop, editing and undo",
   "license": "MIT",
   "author": {
