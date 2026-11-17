@@ -1,25 +1,32 @@
 {
   "name": "@quartzio/gantt",
   "version": "0.0.0",
-  "description": "Headless, framework-agnostic Gantt chart engine",
+  "description": "Headless Gantt chart engine in TypeScript: scheduling in working time, dependencies, calendars, layout, drag and drop and undo, with no dependencies and no DOM",
   "license": "MIT",
-  "author": "Sindre Glomnes",
+  "author": {
+    "name": "Sindre Glomnes",
+    "url": "https://github.com/Sindreglo"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Sindreglo/quartzio.git",
     "directory": "packages/gantt"
   },
-  "homepage": "https://github.com/Sindreglo/quartzio#readme",
+  "homepage": "https://github.com/Sindreglo/quartzio/tree/main/packages/gantt#readme",
   "bugs": {
     "url": "https://github.com/Sindreglo/quartzio/issues"
   },
   "keywords": [
     "gantt",
     "gantt-chart",
-    "scheduling",
-    "timeline",
     "headless",
-    "project-management"
+    "scheduling",
+    "project-management",
+    "project-planning",
+    "timeline",
+    "dependencies",
+    "calendar",
+    "typescript"
   ],
   "type": "module",
   "sideEffects": [

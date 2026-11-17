@@ -1,15 +1,18 @@
 {
   "name": "@quartzio/gantt-react",
   "version": "0.0.0",
-  "description": "React Gantt chart component built on @quartzio/gantt",
+  "description": "React Gantt chart component: task list and timeline with scheduling, dependencies, working-time calendars, drag and drop, editing and undo",
   "license": "MIT",
-  "author": "Sindre Glomnes",
+  "author": {
+    "name": "Sindre Glomnes",
+    "url": "https://github.com/Sindreglo"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Sindreglo/quartzio.git",
     "directory": "packages/gantt-react"
   },
-  "homepage": "https://github.com/Sindreglo/quartzio#readme",
+  "homepage": "https://github.com/Sindreglo/quartzio/tree/main/packages/gantt-react#readme",
   "bugs": {
     "url": "https://github.com/Sindreglo/quartzio/issues"
   },
@@ -19,7 +22,10 @@
     "react",
     "react-component",
     "scheduling",
-    "timeline"
+    "project-management",
+    "project-planning",
+    "timeline",
+    "typescript"
   ],
   "type": "module",
   "sideEffects": [

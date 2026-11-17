@@ -1,5 +1,7 @@
 # @quartzio/gantt
 
+[![npm @quartzio/gantt](https://img.shields.io/npm/v/@quartzio/gantt?label=%40quartzio%2Fgantt)](https://www.npmjs.com/package/@quartzio/gantt) [![license](https://img.shields.io/npm/l/@quartzio/gantt)](https://github.com/Sindreglo/quartzio/blob/main/LICENSE)
+
 A headless Gantt chart engine in TypeScript, with no dependencies and no DOM. It holds the project data, schedules
 tasks in working time, and computes everything a Gantt chart shows (rows, bars, dependency lines, the time axis)
 as plain data in pixels. It also handles dragging, editing, selection, the keyboard and undo. A renderer only draws
@@ -78,6 +80,13 @@ Changes made elsewhere arrive as patches, and `applyPatch(data, patch)` applies 
   changes, transactions, the controller, columns, presets, menus, theming and utilities.
 - [`@quartzio/gantt-react`](https://github.com/Sindreglo/quartzio/tree/main/packages/gantt-react) is a complete
   renderer to learn from.
+
+## Links
+
+- [GitHub repository](https://github.com/Sindreglo/quartzio)
+- [API reference](https://github.com/Sindreglo/quartzio/blob/main/packages/gantt/API.md)
+- [Release notes](https://github.com/Sindreglo/quartzio/tree/main/release-notes)
+- [Report an issue](https://github.com/Sindreglo/quartzio/issues)
 
 ## License
 

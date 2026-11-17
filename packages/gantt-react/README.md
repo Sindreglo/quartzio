@@ -1,5 +1,7 @@
 # @quartzio/gantt-react
 
+[![npm @quartzio/gantt-react](https://img.shields.io/npm/v/@quartzio/gantt-react?label=%40quartzio%2Fgantt-react)](https://www.npmjs.com/package/@quartzio/gantt-react) [![license](https://img.shields.io/npm/l/@quartzio/gantt)](https://github.com/Sindreglo/quartzio/blob/main/LICENSE)
+
 A React Gantt chart: a task list and a timeline with scheduling, dependencies, working-time calendars, drag and
 drop, editing and undo. Built on the headless engine [`@quartzio/gantt`](https://www.npmjs.com/package/@quartzio/gantt).
 
@@ -181,6 +183,13 @@ language, time zone or clock, so:
 The today line only shows after hydration. Node and browsers can format some dates slightly differently even with
 the same locale (for example the space before AM/PM in hour labels); if hydration reports a text mismatch, leave
 out `locale` to render the chart in the browser only.
+
+## Links
+
+- [GitHub repository](https://github.com/Sindreglo/quartzio)
+- [API reference](https://github.com/Sindreglo/quartzio/blob/main/packages/gantt/API.md)
+- [Release notes](https://github.com/Sindreglo/quartzio/tree/main/release-notes)
+- [Report an issue](https://github.com/Sindreglo/quartzio/issues)
 
 ## License
 

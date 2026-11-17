@@ -1,5 +1,7 @@
 # Quartzio
 
+[![npm @quartzio/gantt](https://img.shields.io/npm/v/@quartzio/gantt?label=%40quartzio%2Fgantt)](https://www.npmjs.com/package/@quartzio/gantt) [![npm @quartzio/gantt-react](https://img.shields.io/npm/v/@quartzio/gantt-react?label=%40quartzio%2Fgantt-react)](https://www.npmjs.com/package/@quartzio/gantt-react) [![license](https://img.shields.io/npm/l/@quartzio/gantt)](https://github.com/Sindreglo/quartzio/blob/main/LICENSE)
+
 A Gantt chart library: a headless TypeScript engine that does the scheduling, layout and interaction, with thin
 framework wrappers that only draw.
 
@@ -53,6 +55,12 @@ pnpm install
 pnpm dev        # start the playground
 pnpm check      # lint, typecheck, test, build
 ```
+
+## Links
+
+- [API reference](https://github.com/Sindreglo/quartzio/blob/main/packages/gantt/API.md)
+- [Release notes](https://github.com/Sindreglo/quartzio/tree/main/release-notes)
+- [Report an issue](https://github.com/Sindreglo/quartzio/issues)
 
 ## License
 
